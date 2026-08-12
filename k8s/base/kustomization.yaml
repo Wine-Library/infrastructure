@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - db-cluster.yaml
+  - app.yaml
+  - ingress.yaml
+  - deployer-rbac.yaml
+
+configMapGenerator:
+  - name: wine-app-config
+    literals:
+      - SERVER_PORT=8090
+      - SERVER_CONTEXT_PATH=/api/v1
+      - DB_URL=jdbc:postgresql://wine-db-rw:5432/wine_library
+      - JWT_EXPIRATION=900000
+      - JWT_REFRESH_EXPIRATION=3000000
+      - JWT_ISSUER=wine-service-app
+      - JWT_AUDIENCE=wine-service-api
+      - LIQUIBASE_CONTEXTS=prod
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: wine-library

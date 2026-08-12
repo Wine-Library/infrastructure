@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dev
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      environment: dev
+
+images:
+  - name: ghcr.io/wine-library/backend
+    newTag: dev
+
+configMapGenerator:
+  - name: wine-app-config
+    behavior: merge
+    literals:
+      - LIQUIBASE_CONTEXTS=dev
+
+patches:
+  - target:
+      kind: Cluster
+      name: wine-db
+    patch: |
+      - op: replace
+        path: /spec/instances
+        value: 1
+  - target:
+      kind: Ingress
+      name: wine
+    patch: |
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: dev.wine-library.xyz
+      - op: replace
+        path: /spec/rules/0/host
+        value: dev.wine-library.xyz
