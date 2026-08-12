@@ -5,7 +5,6 @@ resources:
   - db-cluster.yaml
   - app.yaml
   - ingress.yaml
-  - deployer-rbac.yaml
 
 configMapGenerator:
   - name: wine-app-config
