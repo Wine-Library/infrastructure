@@ -16,3 +16,9 @@ labels:
 images:
   - name: ghcr.io/wine-library/backend
     newTag: staging
+
+configMapGenerator:
+  - name: wine-app-config
+    behavior: merge
+    literals:
+      - LIQUIBASE_CONTEXTS=staging

@@ -87,6 +87,23 @@ advisory lock, released automatically when the session drops. Liquibase uses a
 interrupted by a killed pod leaves every later start hanging on the lock until
 it is cleared by hand. The recovery statement is in `k8s/README.md`.
 
+## Every environment sets a non-empty Liquibase context
+
+Each overlay sets `LIQUIBASE_CONTEXTS` to its own name — `dev`, `staging`,
+`prod` — and base defaults to `prod` so a new overlay that forgets the key gets
+the restrictive behaviour rather than the permissive one.
+
+The first attempt left it empty everywhere except dev, on the assumption that an
+empty context filters contexted changesets out. Liquibase does the opposite: with
+no contexts specified at runtime it runs everything, including changesets that
+declare one. That would have put the seed accounts — whose passwords sit in a
+public repository — into prod. An explicit per-environment value filters
+correctly regardless of how the empty case is interpreted.
+
+Verified on the live dev cluster: `databasechangelog` records
+`02-fill-users-table-with-default-users` with `contexts = dev`, and the four seed
+users exist in dev only.
+
 ## Application configuration comes from a generated ConfigMap
 
 Non-secret settings — port, context path, database URL, JWT lifetimes and issuer,

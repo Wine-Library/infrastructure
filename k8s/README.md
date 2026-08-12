@@ -265,10 +265,10 @@ would keep serving a cached image after CI pushed a new one. Prod pins a release
 tag and uses `IfNotPresent`.
 
 **Seed data is gated on a Liquibase context.** The changeset that inserts default
-users carries `context: dev`, and only the dev overlay sets
-`LIQUIBASE_CONTEXTS=dev`. Staging and prod pass an empty value, so contexted
-changesets are skipped. Without this the seed accounts — whose passwords are in
-the repository — would exist in prod.
+users carries `context: dev`, and each overlay sets `LIQUIBASE_CONTEXTS` to its
+own environment name. The value must never be left empty: Liquibase runs every
+changeset when no context is given at runtime, including the contexted ones, so
+an empty value would put the seed accounts into prod rather than keep them out.
 
 ## Migrations
 

@@ -15,7 +15,7 @@ configMapGenerator:
       - JWT_REFRESH_EXPIRATION=3000000
       - JWT_ISSUER=wine-service-app
       - JWT_AUDIENCE=wine-service-api
-      - LIQUIBASE_CONTEXTS=
+      - LIQUIBASE_CONTEXTS=prod
 
 labels:
   - pairs:
