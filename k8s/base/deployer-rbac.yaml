@@ -1,0 +1,33 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployer
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployer
+subjects:
+  - kind: User
+    name: github-deployer@wine-library-mate.iam.gserviceaccount.com
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: deployer
+  apiGroup: rbac.authorization.k8s.io
