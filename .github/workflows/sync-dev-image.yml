@@ -1,0 +1,71 @@
+name: Sync dev image
+
+run-name: sync dev image - ${{ github.event_name }}
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPO: wine-library/backend
+  IMAGE_TAG: dev
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/212393176266/locations/global/workloadIdentityPools/github/providers/github
+          service_account: github-deployer@wine-library-mate.iam.gserviceaccount.com
+
+      - uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: wine-library
+          location: europe-central2
+
+      - id: check
+        run: |
+          set -euo pipefail
+
+          token=$(curl -sf "https://ghcr.io/token?scope=repository:${IMAGE_REPO}:pull&service=ghcr.io" | jq -r .token)
+
+          registry=$(curl -sfI \
+            -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/${IMAGE_REPO}/manifests/${IMAGE_TAG}" \
+            | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:"{print $2}')
+
+          running=$(kubectl get pods -n dev -l app=wine-app \
+            -o jsonpath='{.items[0].status.containerStatuses[0].imageID}' | sed 's/.*@//')
+
+          echo "registry: ${registry:-<empty>}"
+          echo "running:  ${running:-<empty>}"
+
+          if [ -z "$registry" ]; then
+            echo "could not read digest from registry"
+            exit 1
+          fi
+
+          if [ "$registry" = "$running" ]; then
+            echo "up to date"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "image changed, redeploying"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.changed == 'true'
+        run: kubectl rollout restart deployment/wine-app -n dev
+
+      - if: steps.check.outputs.changed == 'true'
+        run: kubectl rollout status deployment/wine-app -n dev --timeout=300s
