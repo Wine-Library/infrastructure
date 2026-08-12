@@ -167,6 +167,32 @@ Raising it goes through IAM & Admin → Quotas in the console. Note that free tr
 accounts cannot request increases; that needs the billing account upgraded to
 paid first, which keeps the remaining credits.
 
+## Deployer access
+
+[deployer-rbac.yaml](deployer-rbac.yaml) grants the `github-deployer` Google
+service account the rights the deploy pipeline needs inside the `dev` namespace.
+Applied by an administrator, once:
+
+```bash
+kubectl apply -f k8s/platform/deployer-rbac.yaml
+```
+
+It deliberately lives here rather than in the deployment overlay. A pipeline that
+applies its own Role can grant itself anything by merging one pull request, so
+the grant has to sit outside what the pipeline applies. Kubernetes pushes in the
+same direction: it refuses to let a subject create a Role carrying permissions
+that subject does not already hold.
+
+The role covers only what the overlay contains, read-only on pods for
+`rollout status`, and no `delete` — a bad manifest can spoil an object but cannot
+remove a database along with its volume. Secrets are absent entirely, so a
+compromised runner cannot read the database password or the JWT signing key.
+
+GCP IAM and Kubernetes RBAC answer different questions here. The service account
+holds `roles/container.clusterViewer` project-wide, which only lets it fetch
+cluster credentials; everything it may actually do is decided by this Role, in
+one namespace.
+
 ## Routing
 
 Each environment gets one hostname, with the API under a path prefix rather than
