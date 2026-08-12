@@ -87,6 +87,72 @@ advisory lock, released automatically when the session drops. Liquibase uses a
 interrupted by a killed pod leaves every later start hanging on the lock until
 it is cleared by hand. The recovery statement is in `k8s/README.md`.
 
+## One ingress controller, not a LoadBalancer per service
+
+`type: LoadBalancer` provisions a cloud load balancer per service — backend,
+Metabase, frontend, per environment. ingress-nginx puts all of them behind one.
+Against a $300 trial that is the difference between one line item and several.
+
+It is also the portable choice: ingress-nginx runs on any cluster, so moving to
+Hetzner changes a DNS record and nothing else. GKE Ingress and Google-managed
+certificates would have to be rebuilt on the next provider, which is the reason
+the original brief ruled them out.
+
+The load balancer's address is a reserved static IP rather than an ephemeral one,
+because it is what DNS points at.
+
+## Frontend and API share a hostname, split by path
+
+Each environment answers on one host, with the API under `/api` rather than on
+its own subdomain:
+
+```
+dev.<domain>/          frontend
+dev.<domain>/api/...   backend
+```
+
+Same-origin, so the browser sends no preflight and the backend needs no CORS
+configuration — which is why its `.cors(disable)` never became a problem. The
+backend's context path is already `/api/v1`, so the prefix passes through with no
+rewrite annotation.
+
+Metabase gets its own hostname instead of a path: it is the analyst's tool, not
+part of the product, and a separate origin keeps it outside the application's.
+
+## Upstream components are installed from charts with explicit resources
+
+ingress-nginx and cert-manager go in through Helm with resource requests set,
+rather than through their plain release manifests. Neither declares requests
+upstream, and Autopilot substitutes 0.5 vCPU and 2 GiB per container when they
+are missing — cert-manager alone reserved about 1.5 vCPU and 6 GiB that way, for
+a component that uses roughly 100Mi.
+
+That was not merely wasteful: it forced a node scale-up, which failed against the
+regional `SSD_TOTAL_GB` quota, since every Autopilot node carries a 100 GB boot
+disk and a new project starts with 250 GB. Two nodes and a 5 GB volume already
+sit at 205 GB.
+
+The CloudNativePG operator stays on its release manifest — it declares its own
+requests, so Autopilot has nothing to substitute.
+
+cert-manager additionally needs `global.leaderElection.namespace=cert-manager`.
+Its default is `kube-system`, which Autopilot makes read-only, so cainjector
+never acquires its lease, never injects the webhook CA bundle, and every webhook
+call fails on an untrusted certificate — while all its pods report `Running`.
+Both settings are documented next to the install command in
+`k8s/platform/README.md`, because neither failure names its own cause.
+
+## Certificates come from Let's Encrypt via cert-manager
+
+HTTP-01 challenges rather than DNS-01, because a challenge served through the
+ingress needs no DNS provider credentials in the cluster. The cost is that
+wildcard certificates are not possible, which does not matter for a handful of
+known hostnames.
+
+Two ClusterIssuers exist. Point an Ingress at `letsencrypt-staging` first: the
+production endpoint allows only a few failures per hostname per week, and
+debugging a misconfigured challenge against it locks the hostname out.
+
 ## Every environment sets a non-empty Liquibase context
 
 Each overlay sets `LIQUIBASE_CONTEXTS` to its own name — `dev`, `staging`,

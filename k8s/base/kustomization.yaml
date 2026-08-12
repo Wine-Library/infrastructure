@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - db-cluster.yaml
   - app.yaml
+  - ingress.yaml
 
 configMapGenerator:
   - name: wine-app-config

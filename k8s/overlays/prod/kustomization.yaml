@@ -19,6 +19,16 @@ images:
 
 patches:
   - target:
+      kind: Ingress
+      name: wine
+    patch: |
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: wine-library.xyz
+      - op: replace
+        path: /spec/rules/0/host
+        value: wine-library.xyz
+  - target:
       kind: Cluster
       name: wine-db
     patch: |
