@@ -39,9 +39,12 @@ patches:
         path: /spec/rules/0/host
         value: staging.wine-library.xyz
   - target:
-      kind: Cluster
-      name: wine-db
+      kind: Ingress
+      name: metabase
     patch: |
       - op: replace
-        path: /spec/instances
-        value: 1
+        path: /spec/tls/0/hosts/0
+        value: bi.staging.wine-library.xyz
+      - op: replace
+        path: /spec/rules/0/host
+        value: bi.staging.wine-library.xyz
