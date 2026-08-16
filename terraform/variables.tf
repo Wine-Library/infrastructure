@@ -61,9 +61,15 @@ variable "project_number" {
 }
 
 variable "region" {
-  description = "Region the cluster, static address, and workload identity pool live in."
+  description = "Region the static address and workload identity pool live in."
   type        = string
   default     = "europe-central2"
+}
+
+variable "zone" {
+  description = "Zone the GKE cluster lives in. Zonal rather than regional to keep the regional SSD_TOTAL_GB quota usable — a regional cluster's node pools span 3 zones and burn through it fast."
+  type        = string
+  default     = "europe-central2-a"
 }
 
 variable "static_address_name" {
