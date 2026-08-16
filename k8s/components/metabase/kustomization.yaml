@@ -3,3 +3,4 @@ kind: Component
 
 resources:
   - metabase.yaml
+  - ingress.yaml
