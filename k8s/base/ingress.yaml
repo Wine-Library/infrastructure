@@ -21,3 +21,10 @@ spec:
                 name: wine-app
                 port:
                   name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wine-frontend
+                port:
+                  name: http

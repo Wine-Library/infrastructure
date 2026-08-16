@@ -1,6 +1,6 @@
-name: Sync dev image
+name: Sync staging image
 
-run-name: sync dev image - ${{ github.event_name }}
+run-name: sync staging image - ${{ github.event_name }}
 
 on:
   schedule:
@@ -8,13 +8,13 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-dev
+  group: deploy-staging
   cancel-in-progress: false
 
 jobs:
   sync:
     uses: ./.github/workflows/sync-image.yml
     with:
-      namespace: dev
-      image_tag: dev
+      namespace: staging
+      image_tag: staging
     secrets: inherit

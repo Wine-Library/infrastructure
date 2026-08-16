@@ -87,7 +87,8 @@ kubectl get secret wine-db-app -n dev -o jsonpath='{.data.password}' | base64 -d
 ```
 
 The application also needs a JWT signing key. Rotating it invalidates every
-issued token, so generate it once per namespace and leave it alone:
+issued token, so generate it once per namespace and leave it alone. Repeat per
+namespace (dev, staging, prod), swapping `--namespace`:
 
 ```bash
 kubectl create secret generic wine-app-jwt --namespace dev --from-literal=secret="$(openssl rand -base64 48)"
@@ -95,12 +96,18 @@ kubectl create secret generic wine-app-jwt --namespace dev --from-literal=secret
 
 The application also sends mail (verification, password reset) and calls an
 external wines API. Both are real third-party credentials, not generated —
-substitute actual values before running:
+substitute actual values before running. Repeat per namespace, and use
+distinct values per environment rather than copying dev's:
 
 ```bash
 kubectl create secret generic wine-app-mail --namespace dev --from-literal=username='<gmail address>' --from-literal=password='<gmail app password>'
 kubectl create secret generic wine-app-wines-api --namespace dev --from-literal=key='<wines API key>'
 ```
+
+Nothing in the application currently reads `wines.api.key` — the property has
+no injection point in the backend, so the secret only exists to satisfy Spring
+at startup (the property has no default). A placeholder value is fine until
+that's resolved.
 
 ### 4. Environment
 
@@ -132,7 +139,9 @@ kubectl cnpg status wine-db -n dev
 Read-only role for Metabase — the analyst must not connect as the database
 owner. The role replicates to the standby automatically.
 
-Generate a password and store it as a secret first:
+Generate a password and store it as a secret first. Repeat per namespace that
+runs Metabase (staging, and prod once it exists — see the environments table
+above):
 
 ```bash
 kubectl create secret generic wine-db-analyst --namespace dev --from-literal=username=analyst --from-literal=password="$(openssl rand -base64 24)"

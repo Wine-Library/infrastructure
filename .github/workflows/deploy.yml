@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      namespace:
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/212393176266/locations/global/workloadIdentityPools/github/providers/github
+          service_account: github-deployer@wine-library-mate.iam.gserviceaccount.com
+
+      - uses: google-github-actions/get-gke-credentials@v3
+        with:
+          cluster_name: wine-library
+          location: europe-central2
+
+      - run: kubectl apply -k k8s/overlays/${{ inputs.environment }}
+
+      - run: kubectl rollout restart deployment/wine-app -n ${{ inputs.namespace }}
+      - if: inputs.environment == 'staging'
+        run: kubectl rollout restart deployment/wine-frontend -n ${{ inputs.namespace }}
+
+      - run: kubectl rollout status deployment/wine-app -n ${{ inputs.namespace }} --timeout=300s
+      - if: inputs.environment == 'staging'
+        run: kubectl rollout status deployment/wine-frontend -n ${{ inputs.namespace }} --timeout=300s
