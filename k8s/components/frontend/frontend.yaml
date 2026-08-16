@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wine-frontend
+  labels:
+    app: wine-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wine-frontend
+  template:
+    metadata:
+      labels:
+        app: wine-frontend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: wine-frontend
+          image: ghcr.io/wine-library/frontend
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wine-frontend
+  labels:
+    app: wine-frontend
+spec:
+  selector:
+    app: wine-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

@@ -8,6 +8,7 @@ resources:
 
 components:
   - ../../components/metabase
+  - ../../components/frontend
 
 labels:
   - pairs:
@@ -15,6 +16,8 @@ labels:
 
 images:
   - name: ghcr.io/wine-library/backend
+    newTag: staging
+  - name: ghcr.io/wine-library/frontend
     newTag: staging
 
 configMapGenerator:
@@ -35,3 +38,10 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: staging.wine-library.xyz
+  - target:
+      kind: Cluster
+      name: wine-db
+    patch: |
+      - op: replace
+        path: /spec/instances
+        value: 1

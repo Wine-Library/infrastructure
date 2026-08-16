@@ -1,0 +1,21 @@
+name: Deploy staging
+
+run-name: deploy staging - ${{ github.actor }} - ${{ github.event_name }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ 'k8s/**' ]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      namespace: staging
+    secrets: inherit

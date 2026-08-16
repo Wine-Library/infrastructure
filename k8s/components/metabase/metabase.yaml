@@ -32,6 +32,7 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        runAsUser: 2000
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
@@ -75,7 +76,7 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]
+              drop: [ "ALL" ]
       volumes:
         - name: data
           persistentVolumeClaim:
