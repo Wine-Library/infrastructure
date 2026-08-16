@@ -14,9 +14,9 @@ A `type: LoadBalancer` service provisions one cloud load balancer each. One
 ingress controller fronts every service in every namespace behind a single load
 balancer, which is the difference between one line item and four.
 
-It is also the portable choice. ingress-nginx runs on any Kubernetes cluster, so
-the move to Hetzner changes the DNS record and nothing else. GKE's own Ingress
-and Google-managed certificates would have to be rebuilt on the next provider.
+It is also the portable choice. ingress-nginx runs on any Kubernetes cluster,
+unlike GKE's own Ingress and Google-managed certificates, which are tied to
+this provider.
 
 ## 1. Reserve a static IP
 
