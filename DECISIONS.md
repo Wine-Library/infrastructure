@@ -66,7 +66,7 @@ manifest with a real password in git defeats the point. Both live as commands in
 The brief asked for a commented-out `barmanObjectStore` block in the cluster
 manifest. Fifteen lines of dead YAML in a live manifest is noise; the block sits
 in `k8s/README.md` as a ready-to-paste overlay patch instead, alongside the note
-that the same block targets Hetzner Object Storage.
+that the same block targets any other S3-compatible provider.
 
 ## Connection string uses the short service name
 
@@ -93,10 +93,9 @@ it is cleared by hand. The recovery statement is in `k8s/README.md`.
 Metabase, frontend, per environment. ingress-nginx puts all of them behind one.
 Against a $300 trial that is the difference between one line item and several.
 
-It is also the portable choice: ingress-nginx runs on any cluster, so moving to
-Hetzner changes a DNS record and nothing else. GKE Ingress and Google-managed
-certificates would have to be rebuilt on the next provider, which is the reason
-the original brief ruled them out.
+It is also the portable choice: ingress-nginx runs on any cluster, unlike GKE
+Ingress and Google-managed certificates, which would have to be rebuilt on a
+different provider — the reason the original brief ruled them out.
 
 The load balancer's address is a reserved static IP rather than an ephemeral one,
 because it is what DNS points at.
@@ -118,6 +117,40 @@ rewrite annotation.
 
 Metabase gets its own hostname instead of a path: it is the analyst's tool, not
 part of the product, and a separate origin keeps it outside the application's.
+
+## Wine images go to Cloudflare R2, served from `img.wine-library.xyz`
+
+Product images need object storage, and the choice follows the same reasoning that
+picked CloudNativePG over Cloud SQL: staying provider-agnostic where it costs
+nothing extra. R2 belongs to no cloud provider, so it needs no manifest changes
+if the cluster ever moves. A GCS bucket would have to be copied and re-pointed.
+
+Egress is free on R2, which is what makes it cheaper than S3 for a workload that
+is almost entirely reads. The free tier — 10 GB stored, 1M class A and 10M class B
+operations a month, counted per account rather than per bucket — covers a
+catalogue this size several times over.
+
+Traffic goes through a custom domain rather than the `r2.dev` development URL.
+`r2.dev` is rate limited and not cached at the edge, and leaving it on beside a
+custom domain keeps a second public entrance to the bucket that nobody watches. It
+stays disabled.
+
+The hostname is a subdomain, not the apex. `wine-library.xyz` is where the prod
+frontend goes, and a custom domain there would put a proxied record in front of the
+bucket: the ingress could not claim the name, and cert-manager's HTTP-01 challenge
+would be answered by R2 instead of by the cluster.
+
+Credentials are an R2 API token scoped to the single `wine-images` bucket with
+object read and write, kept in a `wine-app-r2` secret created by hand, exactly as
+`wine-db-app` and `wine-app-jwt` are. The default of "all buckets in this account,
+including newly created buckets" would have handed the application access to the
+database backup bucket that does not exist yet.
+
+Nothing references any of this yet. The bucket, the hostname and the token exist;
+the manifests gain `R2_ENDPOINT`, `R2_BUCKET` and `R2_PUBLIC_URL` in the generated
+ConfigMap and two `secretKeyRef` entries once the backend has an upload path.
+Wiring configuration into a deployment that ignores it would only make the first
+real test ambiguous.
 
 ## Upstream components are installed from charts with explicit resources
 
@@ -318,3 +351,36 @@ creation; injecting a per-overlay label there would break the first update.
 `ghcr.io/wine-library/backend` — the registry path is a guess until the backend's
 CI publishes somewhere concrete. Needs confirming before the deployment is
 applied for real.
+
+## Terraform manages a curated API list, not everything `gcloud` shows enabled
+
+The project has 38 services enabled; most got there as automatic dependencies
+of `container.googleapis.com` or as a side effect of setting up billing export
+(the whole BigQuery family, `analyticshub`, `dataform`, `dataplex`). `terraform/`
+only declares the handful the cluster and the deploy pipeline directly need —
+`compute`, `container`, `iam`, `iamcredentials`, `sts`, `logging`, `monitoring`.
+Trying to own the rest would mean fighting GCP's own dependency enablement on
+every plan, for services nothing here actually calls.
+
+## `dev` requests are patched below base, `staging` and `prod` are not
+
+Base sets 250m/512Mi for `wine-app` and `wine-db` — sized for something that
+takes real traffic. `dev` only serves the frontend's local development against
+a single-instance database with no concurrent users, so its overlay drops
+requests to 100m/320Mi and 100m/256Mi. Limits stay at the base value — only the
+scheduling reservation shrinks, not the ceiling, so a runaway dev process still
+gets killed at the same threshold as before.
+
+The point is capacity on the two already-provisioned nodes, not per-pod tuning:
+staging is about to add a second `wine-db` instance plus Metabase, and the
+regional `SSD_TOTAL_GB` quota has room for roughly one more Autopilot node —
+each carries a fixed 100 GB boot disk. Freeing dev's reserved-but-unused
+capacity buys headroom without touching that quota.
+
+## Terraform state stays local for now
+
+`terraform/` has no remote backend yet — state is a gitignored file on whoever
+runs `apply`. That's fine while it's one person; the day a second person needs
+to run it, state has to move to a GCS bucket first, or two applies will race
+each other. Not set up preemptively because it's a new bucket to provision,
+and this pass was about capturing what already exists, not adding to it.

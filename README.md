@@ -6,6 +6,10 @@ Infrastructure for the Wine Library project.
 
 - [`k8s/`](k8s/) — Kubernetes manifests as a kustomize base with one overlay per
   environment. Start with [`k8s/README.md`](k8s/README.md) for the apply order.
+- [`terraform/`](terraform/) — everything under the cluster: project, APIs,
+  the cluster itself, the static IP, workload identity. See
+  [`terraform/README.md`](terraform/README.md).
+- [`DECISIONS.md`](DECISIONS.md) — why things are the way they are.
 
 ```bash
 kubectl apply -k k8s/overlays/dev

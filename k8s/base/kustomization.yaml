@@ -17,6 +17,7 @@ configMapGenerator:
       - JWT_ISSUER=wine-service-app
       - JWT_AUDIENCE=wine-service-api
       - LIQUIBASE_CONTEXTS=prod
+      - FRONTEND_URL=https://wine-library.xyz
 
 labels:
   - pairs:

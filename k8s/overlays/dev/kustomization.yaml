@@ -19,6 +19,7 @@ configMapGenerator:
     behavior: merge
     literals:
       - LIQUIBASE_CONTEXTS=dev
+      - FRONTEND_URL=https://dev.wine-library.xyz
 
 patches:
   - target:
@@ -28,6 +29,22 @@ patches:
       - op: replace
         path: /spec/instances
         value: 1
+      - op: replace
+        path: /spec/resources/requests/cpu
+        value: 100m
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: 256Mi
+  - target:
+      kind: Deployment
+      name: wine-app
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 100m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 320Mi
   - target:
       kind: Ingress
       name: wine
