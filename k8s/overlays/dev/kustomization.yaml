@@ -6,12 +6,17 @@ namespace: dev
 resources:
   - ../../base
 
+components:
+  - ../../components/frontend
+
 labels:
   - pairs:
       environment: dev
 
 images:
   - name: ghcr.io/wine-library/backend
+    newTag: dev
+  - name: ghcr.io/wine-library/frontend
     newTag: dev
 
 configMapGenerator:
