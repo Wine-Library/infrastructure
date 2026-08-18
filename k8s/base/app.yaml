@@ -38,12 +38,24 @@ spec:
       initContainers:
         - name: wait-for-db
           image: ghcr.io/cloudnative-pg/postgresql:17.10
+          # -U is not optional here: the pod runs as uid 1000, which has no
+          # entry in the image's /etc/passwd, so libpq cannot derive a default
+          # user name and pg_isready gives up with "no attempt" (rc 3) without
+          # ever opening a socket. It never authenticates - any name gets an
+          # honest answer - but taking it from the same secret the app uses
+          # keeps the two in step.
+          env:
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: wine-db-app
+                  key: username
           command:
             - sh
             - -c
             - |
               deadline=$(( $(date +%s) + 240 ))
-              until pg_isready -h wine-db-rw -p 5432 -q; do
+              until pg_isready -h wine-db-rw -p 5432 -U "$DB_USERNAME" -q; do
                 if [ "$(date +%s)" -ge "$deadline" ]; then
                   echo "wine-db-rw not accepting connections after 240s" >&2
                   exit 1
