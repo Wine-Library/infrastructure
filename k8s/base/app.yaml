@@ -22,6 +22,60 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # wine-app is fail-fast about its database: Hikari validates a connection
+      # while building the pool and Liquibase runs before the context is up, so
+      # a database that is briefly unreachable - a CNPG switchover, a node
+      # upgrade - takes the process down with exit code 1 instead of making it
+      # wait. Recovery then depends on CrashLoopBackOff happening to retry at
+      # the right moment, which is how a 40s switchover cost three restarts on
+      # 2026-08-18. Blocking here keeps the JVM from ever starting against a
+      # database that is not accepting connections.
+      #
+      # The image is the one the CNPG cluster already runs, so it is present on
+      # any node hosting a database pod and costs no extra pull. Init requests
+      # do not add to the pod's scheduling footprint either, since they are
+      # below what the app container already asks for.
+      initContainers:
+        - name: wait-for-db
+          image: ghcr.io/cloudnative-pg/postgresql:17.10
+          # -U is not optional here: the pod runs as uid 1000, which has no
+          # entry in the image's /etc/passwd, so libpq cannot derive a default
+          # user name and pg_isready gives up with "no attempt" (rc 3) without
+          # ever opening a socket. It never authenticates - any name gets an
+          # honest answer - but taking it from the same secret the app uses
+          # keeps the two in step.
+          env:
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: wine-db-app
+                  key: username
+          command:
+            - sh
+            - -c
+            - |
+              deadline=$(( $(date +%s) + 240 ))
+              until pg_isready -h wine-db-rw -p 5432 -U "$DB_USERNAME" -q; do
+                if [ "$(date +%s)" -ge "$deadline" ]; then
+                  echo "wine-db-rw not accepting connections after 240s" >&2
+                  exit 1
+                fi
+                echo "waiting for wine-db-rw..."
+                sleep 2
+              done
+              echo "wine-db-rw is accepting connections"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
       containers:
         - name: wine-app
           image: ghcr.io/wine-library/backend
