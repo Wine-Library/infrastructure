@@ -7,10 +7,13 @@ spec:
 
   imageName: ghcr.io/cloudnative-pg/postgresql:17.10
 
+  # Measured at ~12m CPU and ~75Mi per instance under current load. Memory
+  # request stays well above that to leave room for shared_buffers plus page
+  # cache as the dataset grows.
   resources:
     requests:
       memory: "512Mi"
-      cpu: "250m"
+      cpu: "100m"
     limits:
       memory: "1Gi"
       cpu: "500m"

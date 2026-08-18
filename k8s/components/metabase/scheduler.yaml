@@ -1,0 +1,153 @@
+# Metabase is the single largest memory consumer in the cluster (~1.5Gi
+# resident), and nobody looks at BI dashboards at night. These two CronJobs
+# park it at zero replicas between midnight and 10:00 local, which is what
+# keeps the node pool comfortable at two nodes instead of drifting up to
+# three.
+#
+# The PVC, Service, Ingress and TLS certificate all survive a scale to zero, so
+# bringing it back up is just the replica count - no data loss, no new cert.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metabase-scaler
+  labels:
+    app: metabase
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: metabase-scaler
+  labels:
+    app: metabase
+rules:
+  # Scoped to the one Deployment it is allowed to touch.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["metabase"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["metabase"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metabase-scaler
+  labels:
+    app: metabase
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: metabase-scaler
+subjects:
+  - kind: ServiceAccount
+    name: metabase-scaler
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: metabase-scale-down
+  labels:
+    app: metabase
+spec:
+  # Midnight local, every day.
+  schedule: "0 0 * * *"
+  timeZone: "Europe/Kyiv"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: metabase
+            job: metabase-scale-down
+        spec:
+          serviceAccountName: metabase-scaler
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: kubectl
+              image: registry.k8s.io/kubectl:v1.35.7
+              command:
+                - kubectl
+                - scale
+                - deployment/metabase
+                - --replicas=0
+              resources:
+                requests:
+                  memory: "32Mi"
+                  cpu: "10m"
+                limits:
+                  memory: "64Mi"
+                  cpu: "100m"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: metabase-scale-up
+  labels:
+    app: metabase
+spec:
+  # 10:00 local, every day - closing the ten-hour overnight window. Metabase
+  # needs a couple of minutes to pass its startupProbe, so it is serving by
+  # roughly 10:02.
+  schedule: "0 10 * * *"
+  timeZone: "Europe/Kyiv"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: metabase
+            job: metabase-scale-up
+        spec:
+          serviceAccountName: metabase-scaler
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: kubectl
+              image: registry.k8s.io/kubectl:v1.35.7
+              command:
+                - kubectl
+                - scale
+                - deployment/metabase
+                - --replicas=1
+              resources:
+                requests:
+                  memory: "32Mi"
+                  cpu: "10m"
+                limits:
+                  memory: "64Mi"
+                  cpu: "100m"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]

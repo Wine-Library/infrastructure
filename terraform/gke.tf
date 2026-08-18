@@ -23,9 +23,13 @@ resource "google_container_node_pool" "primary" {
   location = var.zone
   cluster  = google_container_cluster.main.name
 
+  # Measured steady state is ~640m CPU / ~4.2Gi of pod requests across dev and
+  # staging, which fits on two e2-standard-2 with room to spare - so the floor
+  # is 2, not 3. The ceiling is 3 because the region's IN_USE_ADDRESSES quota
+  # is 4 and the ingress load balancer holds one of those four addresses.
   autoscaling {
-    min_node_count = 3
-    max_node_count = 4
+    min_node_count = 2
+    max_node_count = 3
   }
 
   management {
@@ -33,10 +37,11 @@ resource "google_container_node_pool" "primary" {
     auto_upgrade = true
   }
 
-  # Nodes get an ephemeral external IP each by default, and the region's
-  # IN_USE_ADDRESSES quota is 4 - already exactly what min/max node count
-  # uses at steady state. A surge upgrade (create-then-delete) needs a 5th
-  # address and fails; recreate-then-create stays within the 4 we have.
+  # Nodes get an ephemeral external IP each by default, so at the ceiling of 3
+  # nodes plus the ingress address we are already at the quota of 4. A surge
+  # upgrade (create-then-delete) would need a 5th address and fails - this is
+  # what broke the 2026-08-16 node upgrade. Recreate-then-create stays within
+  # the 4 we have.
   upgrade_settings {
     strategy        = "SURGE"
     max_surge       = 0

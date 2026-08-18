@@ -18,7 +18,10 @@ metadata:
   labels:
     app: metabase
 spec:
-  replicas: 1
+  # replicas is deliberately absent. The scale-down/scale-up CronJobs in
+  # scheduler.yaml own this field; because the deploy pipeline uses a
+  # client-side `kubectl apply -k`, a field we never send is a field apply
+  # never resets, so an off-hours Metabase stays off across deploys.
   strategy:
     type: Recreate
   selector:
@@ -50,10 +53,14 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /metabase.db
+          # The JVM settles at ~1.5Gi resident, so the old 1Gi request was a
+          # lie: the pod ran over its request and was the first thing the
+          # kubelet would evict under memory pressure. CPU, by contrast, sits
+          # at ~22m and was massively over-requested.
           resources:
             requests:
-              memory: "1Gi"
-              cpu: "250m"
+              memory: "1792Mi"
+              cpu: "100m"
             limits:
               memory: "2Gi"
               cpu: "500m"
