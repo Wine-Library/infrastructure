@@ -29,10 +29,11 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          # Static assets behind nginx - measured at 1m CPU and 2Mi resident.
           resources:
             requests:
-              memory: "64Mi"
-              cpu: "50m"
+              memory: "32Mi"
+              cpu: "20m"
             limits:
               memory: "128Mi"
               cpu: "200m"
