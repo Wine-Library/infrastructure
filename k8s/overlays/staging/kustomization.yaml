@@ -48,3 +48,10 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: bi.staging.wine-library.xyz
+  - target:
+      kind: Cluster
+      name: wine-db
+    patch: |
+      - op: replace
+        path: /spec/backup/barmanObjectStore/destinationPath
+        value: "s3://wine-library-mate-wine-db-backups/staging/"

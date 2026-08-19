@@ -32,3 +32,20 @@ spec:
       owner: wine_app
       secret:
         name: wine-db-app
+
+  # Base path only — each overlay patches destinationPath to its own
+  # subfolder (see overlays/*/kustomization.yaml) so environments don't write
+  # into each other's backups. gcs-backup-creds is created by hand per
+  # namespace; see RECOVERY.md and k8s/README.md.
+  backup:
+    barmanObjectStore:
+      destinationPath: "s3://wine-library-mate-wine-db-backups/"
+      endpointURL: "https://storage.googleapis.com"
+      s3Credentials:
+        accessKeyId:
+          name: gcs-backup-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: gcs-backup-creds
+          key: SECRET_ACCESS_KEY
+    retentionPolicy: "7d"

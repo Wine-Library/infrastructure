@@ -17,3 +17,19 @@ output "workload_identity_provider" {
   description = "Full identifier to paste into workload_identity_provider in workflow files."
   value       = "projects/${var.project_number}/locations/global/workloadIdentityPools/${var.workload_identity_pool_id}/providers/${var.workload_identity_provider_id}"
 }
+
+output "wine_db_backup_bucket" {
+  description = "GCS bucket barmanObjectStore writes base backups and WAL to."
+  value       = google_storage_bucket.wine_db_backups.name
+}
+
+output "wine_db_backup_access_id" {
+  description = "HMAC access key ID — the ACCESS_KEY_ID half of the gcs-backup-creds secret. See RECOVERY.md."
+  value       = google_storage_hmac_key.wine_db_backup.access_id
+}
+
+output "wine_db_backup_secret" {
+  description = "HMAC secret — the SECRET_ACCESS_KEY half of the gcs-backup-creds secret. Only ever printed via `terraform output -raw`, never logged."
+  value       = google_storage_hmac_key.wine_db_backup.secret
+  sensitive   = true
+}
