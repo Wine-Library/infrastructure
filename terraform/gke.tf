@@ -14,6 +14,31 @@ resource "google_container_cluster" "main" {
 
   ip_allocation_policy {}
 
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  cost_management_config {
+    enabled = true
+  }
+
+  monitoring_config {
+    enable_components = [
+      "SYSTEM_COMPONENTS",
+      "POD",
+      "DEPLOYMENT",
+      "STATEFULSET",
+      "DAEMONSET",
+      "HPA",
+      "CADVISOR",
+      "KUBELET",
+    ]
+
+    managed_prometheus {
+      enabled = true
+    }
+  }
+
   depends_on = [google_project_service.service]
 }
 
@@ -57,6 +82,10 @@ resource "google_container_node_pool" "primary" {
     shielded_instance_config {
       enable_secure_boot          = true
       enable_integrity_monitoring = true
+    }
+
+    workload_metadata_config {
+      mode = "GKE_METADATA"
     }
 
     oauth_scopes = [

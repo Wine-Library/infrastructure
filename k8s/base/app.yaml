@@ -75,7 +75,7 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
-              drop: ["ALL"]
+              drop: [ "ALL" ]
       containers:
         - name: wine-app
           image: ghcr.io/wine-library/backend
@@ -83,6 +83,8 @@ spec:
           ports:
             - name: http
               containerPort: 8090
+            - name: management
+              containerPort: 9090
           envFrom:
             - configMapRef:
                 name: wine-app-config
@@ -129,30 +131,30 @@ spec:
               cpu: "500m"
           startupProbe:
             httpGet:
-              path: /api/v1/actuator/health/readiness
-              port: http
+              path: /actuator/health/readiness
+              port: management
             periodSeconds: 10
             failureThreshold: 30
           readinessProbe:
             httpGet:
-              path: /api/v1/actuator/health/readiness
-              port: http
+              path: /actuator/health/readiness
+              port: management
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/v1/actuator/health/liveness
-              port: http
+              path: /actuator/health/liveness
+              port: management
             periodSeconds: 20
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]
+              drop: [ "ALL" ]
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads
       volumes:
         - name: uploads
-          emptyDir: {}
+          emptyDir: { }
 ---
 apiVersion: v1
 kind: Service

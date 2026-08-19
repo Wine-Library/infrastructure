@@ -224,14 +224,26 @@ own `SPRING_DATASOURCE_*`, which would have needed no configuration at all. The
 manifests adapt instead of asking for a rename — three lines here against a
 change to a repository already in review.
 
-## Probe paths are coupled to the context path
+## Actuator listens on its own port, not behind the context path
 
-`SERVER_CONTEXT_PATH=/api/v1` shifts the actuator endpoints too, so the probes
-target `/api/v1/actuator/health/...`. Plain kustomize cannot interpolate the
-ConfigMap value into the probe path, so the two are kept in sync by hand and
-flagged in `k8s/README.md`. Setting `management.server.port` on the backend
-would remove the coupling and keep actuator off any future Ingress; worth doing
-if the context path ever changes.
+Superseded the arrangement where `SERVER_CONTEXT_PATH=/api/v1` shifted the
+actuator endpoints along with everything else and the probes had to track it by
+hand. The backend now sets `management.server.port=9090`, so actuator sits on a
+second connector at the root of its own port and the probes target
+`/actuator/health/...` there.
+
+What forced it was not the coupling but exposure. The Ingress routes `/api` into
+the `wine-app` service, and the application's context path is `/api/v1`, so
+everything actuator served was already public — `/api/v1/actuator/health`
+answered 200 to the internet. Adding a Prometheus endpoint on that port would
+have published endpoint names, library versions and request statistics with it.
+Nothing routes to 9090, so it is reachable from inside the cluster and nowhere
+else.
+
+The cost is that the two repositories have to move together: an image without
+the setting fails probes on 9090, and an image with it fails probes on 8090.
+Between the two merges the old pod keeps serving — `maxUnavailable` rounds to
+zero at one replica — so the failure mode is a stalled rollout, not an outage.
 
 ## Pinned image versions with an explicit staleness note
 
@@ -384,3 +396,67 @@ runs `apply`. That's fine while it's one person; the day a second person needs
 to run it, state has to move to a GCS bucket first, or two applies will race
 each other. Not set up preemptively because it's a new bucket to provision,
 and this pass was about capturing what already exists, not adding to it.
+
+## Managed Prometheus stores the metrics, Grafana only draws them
+
+The alternative was kube-prometheus-stack, and its values file lived at
+`k8s/platform/monitoring-values.yaml` for a while without ever being installed.
+It is recorded here and deleted rather than kept: an unapplied manifest in the
+tree costs someone half a day of "why is this not running" later.
+
+The numbers decided it. kube-prometheus-stack asks for roughly 1.75Gi plus a 5Gi
+volume, which on two `e2-standard-2` nodes means a third one — measured at
+$0.0812 per hour, so $59/month, not the $40 a price list suggests. Managed
+Prometheus samples cost $10–16/month and are already on the bill: the collectors
+have been running and ingesting since the cluster was built, and until now
+nothing consumed what they collected. Retention is 24 months against three days
+on a disk we would own, and it survived the cluster being recreated on
+2026-08-16, which a PVC would not have.
+
+What we give up is Alertmanager, replaced by the `Rules` CRD writing back into
+Cloud Monitoring, and independence from Google — the same argument that chose
+CloudNativePG points the other way here, and loses to the node price.
+
+The bill is now a function of cardinality, which is why the scrape interval is
+60s rather than 30s everywhere, why the ingress controller's `path` label is
+dropped, and why the endpoint latency panel is a `topk(10)`. Halving an interval
+or keeping one high-cardinality label doubles a line item as surely as adding a
+target does.
+
+## Metrics components are trimmed, but not to the point of blindness
+
+GKE enables eleven monitoring components by default. Three are gone:
+`DCGM` exports GPU metrics and its DaemonSet has zero pods on a cluster with no
+GPU nodes — it was assumed to be waste on the bill and turned out to cost
+exactly nothing, which is a different reason to drop it; `JOBSET` describes a
+workload type nothing here runs; `STORAGE` duplicates what CNPG already reports
+about the only volumes that matter.
+
+`CADVISOR` and `KUBELET` stay, although they are the expensive pair. Container
+CPU and memory come from them and from nothing else — kube-state-metrics reports
+what a pod *requested*, not what it uses, so cutting them to save samples would
+leave the cluster dashboard showing reservations and calling them consumption.
+
+`cost_management_config` is enabled in the same block. It labels the BigQuery
+billing export with namespace and workload, which is the only way to say what
+dev costs versus staging. It was on for the Autopilot cluster and was lost when
+this one was created; the export has carried no namespace breakdown since
+2026-08-17.
+
+## The Grafana datasource authenticates through Workload Identity
+
+Grafana queries Cloud Monitoring through the prometheus-engine frontend proxy,
+which has to present Google credentials. The node pool already carries the
+`monitoring` OAuth scope, so the proxy could simply borrow the node's service
+account and work today with no cluster change at all.
+
+Workload Identity was worth the disruption anyway. Borrowing the node identity
+grants those credentials to every pod scheduled on that node, including anything
+a future dependency drags in; binding one Kubernetes service account to one
+Google service account with `roles/monitoring.viewer` grants read-only metrics
+access to exactly one workload, with no key material anywhere.
+
+The disruption is real: `GKE_METADATA` on the node pool recreates every node. It
+stays inside the `IN_USE_ADDRESSES` quota of 4 because `max_surge = 0` replaces
+them one at a time, and it is applied as its own change, not folded into a
+deploy.
