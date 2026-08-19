@@ -56,16 +56,16 @@ spec:
           # The JVM settles at ~1.5Gi resident, so the old 1Gi request was a
           # lie: the pod ran over its request and was the first thing the
           # kubelet would evict under memory pressure. CPU, by contrast, sits
-          # at ~22m and was massively over-requested. The 300m limit (3x
-          # request) keeps headroom for JVM startup burst within the 5-minute
-          # startupProbe window without carrying the old 500m slack.
+          # at ~22m and was massively over-requested. A 300m limit was tried
+          # and throttled JVM startup badly enough to blow the 5-minute
+          # startupProbe window (observed 2026-08-19) - back to 500m.
           resources:
             requests:
               memory: "1792Mi"
               cpu: "100m"
             limits:
               memory: "2Gi"
-              cpu: "300m"
+              cpu: "500m"
           startupProbe:
             httpGet:
               path: /api/health
