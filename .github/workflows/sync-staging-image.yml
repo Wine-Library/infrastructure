@@ -4,6 +4,9 @@ run-name: sync staging image - ${{ github.event_name }}
 
 on:
   schedule:
+    # Best effort on GitHub's side: observed spacing on this repository runs
+    # 25-50 minutes, not five. It is a backstop for image pushes, not a
+    # promotion mechanism - `Deploy staging` is what makes a change land now.
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
@@ -13,6 +16,16 @@ concurrency:
 
 jobs:
   sync:
+    strategy:
+      # Backend and frontend are independent; a registry hiccup on one should
+      # not stop the other from being rolled out.
+      fail-fast: false
+      matrix:
+        include:
+          - deployment: wine-app
+            image_repo: wine-library/backend
+          - deployment: wine-frontend
+            image_repo: wine-library/frontend
     permissions:
       contents: read
       id-token: write
@@ -20,4 +33,6 @@ jobs:
     with:
       namespace: staging
       image_tag: staging
+      image_repo: ${{ matrix.image_repo }}
+      deployment: ${{ matrix.deployment }}
     secrets: inherit

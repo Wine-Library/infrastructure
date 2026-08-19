@@ -577,3 +577,27 @@ The general lesson is about the Role, not about Metabase. It has to track what
 the overlay actually renders, and until now nothing checked that. `kubectl
 kustomize k8s/overlays/staging | grep '^kind:' | sort -u` is the list it has to
 cover.
+
+## The image watcher covers both services, and is a backstop rather than the path
+
+Recorded 19 August 2026.
+
+`Sync image` polls ghcr.io for the digest behind a moving tag and restarts the
+Deployment when it moves. It was written for the backend and hardcoded
+`wine-library/backend`, which was invisible while nothing worked: a push to the
+frontend's `staging` branch built an image that then sat in the registry until
+someone happened to deploy the infrastructure repository. The repository and the
+Deployment are now inputs, and `Sync staging image` calls the workflow twice
+through a matrix, once per service. `fail-fast` is off so a registry hiccup on
+one does not strand the other.
+
+The cron reads `*/5` and does not mean it. Observed spacing on this repository is
+25 to 50 minutes; GitHub schedules are best effort and are throttled first on
+public repositories under load. Nothing here should depend on the interval. The
+watcher exists so that an image pushed from another repository eventually lands
+without anyone touching this one — `Deploy staging` is what makes a change land
+now, and it runs on push to `main` under `k8s/**`.
+
+Comparing digests rather than tags is the point. Both services deploy the moving
+`staging` tag, so the tag in the manifest never changes and Kubernetes sees no
+reason to do anything; the digest behind it is the only thing that moves.
