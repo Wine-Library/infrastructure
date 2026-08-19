@@ -12,7 +12,7 @@ Infrastructure for the Wine Library project.
 - [`DECISIONS.md`](DECISIONS.md) — why things are the way they are.
 
 ```bash
-kubectl apply -k k8s/overlays/dev
+kubectl apply -k k8s/overlays/staging
 ```
 
 ## Stack
@@ -34,12 +34,14 @@ provider-specific pieces.
 
 ## Environments
 
-- `dev` — automatic deploys from CI; serves the API the frontend develops against
-- `staging` — stable build for QA, plus the analyst's Metabase; promoted by tag
+- `staging` — the shared integration target: automatic deploys from CI, stable
+  build for QA, plus the analyst's Metabase
 - `prod` — stands up at the end of the project, replacing staging
 
-Autopilot capacity will not carry all three at once, so staging is retired when
-prod comes up. Per-environment sizing is in [`k8s/README.md`](k8s/README.md).
+The `dev` environment was removed — see [`DECISIONS.md`](DECISIONS.md). Autopilot
+capacity will not carry both remaining environments at once, so staging is
+retired when prod comes up. Per-environment sizing is in
+[`k8s/README.md`](k8s/README.md).
 
 ## Secrets
 

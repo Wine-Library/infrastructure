@@ -10,7 +10,7 @@ k8s/
 ├── namespaces.yaml              cluster-wide, applied once
 ├── base/                        shared definitions, no namespace
 ├── components/metabase/         opt-in, included per environment
-├── overlays/{dev,staging,prod}/ environment differences
+├── overlays/{staging,prod}/     environment differences
 └── sql/                         one-off statements run against the primary
 ```
 
@@ -21,26 +21,23 @@ directory.
 
 ## Environments
 
-| | dev | staging | prod |
-| --- | --- | --- | --- |
-| Purpose | backend pushes and sees the result; serves the API the frontend develops against | QA testing and analytics | live |
-| Users | backend, frontend | QA, analyst | everyone |
-| Postgres instances | 1 | 2 (primary + replica) | 2 (primary + replica) |
-| Storage | 5Gi | 5Gi | 10Gi |
-| App replicas | 1 | 1 | 2 |
-| Metabase | no | yes | yes |
-| Image tag | `dev` | `staging` | release tag |
-| Image pull | always | always | if not present |
-| Lifetime | the project | until prod comes up | months |
+| | staging | prod |
+| --- | --- | --- |
+| Purpose | integration target for backend and frontend, QA testing and analytics | live |
+| Users | backend, frontend, QA, analyst | everyone |
+| Postgres instances | 2 (primary + replica) | 2 (primary + replica) |
+| Storage | 5Gi | 10Gi |
+| App replicas | 1 | 2 |
+| Metabase | yes | yes |
+| Image tag | `staging` | release tag |
+| Image pull | always | if not present |
+| Lifetime | until prod comes up | months |
 
-Dev runs a single Postgres instance: nothing reads from a replica there, and the
-data churns with every merge. The analyst works against staging, where the build
-is stable and QA has already exercised it — so staging carries the replica and
-the Metabase instance.
+Staging carries the replica and the Metabase instance: the analyst works against
+a build that is stable and that QA has already exercised.
 
-Autopilot capacity will not carry three environments at once. Staging is retired
-when prod comes up, and Metabase moves with the analyst; its overlay stays in
-git as the reference for how a throwaway environment was shaped.
+Autopilot capacity will not carry both environments at once. Staging is retired
+when prod comes up, and Metabase moves with the analyst.
 
 Metabase questions are bound to the IDs of the database they were built on, so
 dashboards do not follow the analyst from staging to prod automatically. Plan
@@ -77,31 +74,31 @@ itself, but an explicit secret keeps the connection string predictable across
 recreates. Repeat per namespace.
 
 ```bash
-kubectl create secret generic wine-db-app --namespace dev --from-literal=username=wine_app --from-literal=password="$(openssl rand -base64 24)"
+kubectl create secret generic wine-db-app --namespace staging --from-literal=username=wine_app --from-literal=password="$(openssl rand -base64 24)"
 ```
 
 Read the password back when you need it:
 
 ```bash
-kubectl get secret wine-db-app -n dev -o jsonpath='{.data.password}' | base64 -d
+kubectl get secret wine-db-app -n staging -o jsonpath='{.data.password}' | base64 -d
 ```
 
 The application also needs a JWT signing key. Rotating it invalidates every
 issued token, so generate it once per namespace and leave it alone. Repeat per
-namespace (dev, staging, prod), swapping `--namespace`:
+namespace (staging, prod), swapping `--namespace`:
 
 ```bash
-kubectl create secret generic wine-app-jwt --namespace dev --from-literal=secret="$(openssl rand -base64 48)"
+kubectl create secret generic wine-app-jwt --namespace staging --from-literal=secret="$(openssl rand -base64 48)"
 ```
 
 The application also sends mail (verification, password reset) and calls an
 external wines API. Both are real third-party credentials, not generated —
 substitute actual values before running. Repeat per namespace, and use
-distinct values per environment rather than copying dev's:
+distinct values per environment rather than copying staging's:
 
 ```bash
-kubectl create secret generic wine-app-mail --namespace dev --from-literal=username='<gmail address>' --from-literal=password='<gmail app password>'
-kubectl create secret generic wine-app-wines-api --namespace dev --from-literal=key='<wines API key>'
+kubectl create secret generic wine-app-mail --namespace staging --from-literal=username='<gmail address>' --from-literal=password='<gmail app password>'
+kubectl create secret generic wine-app-wines-api --namespace staging --from-literal=key='<wines API key>'
 ```
 
 Nothing in the application currently reads `wines.api.key` — the property has
@@ -114,24 +111,24 @@ that's resolved.
 Review the rendered output before applying:
 
 ```bash
-kubectl kustomize overlays/dev
+kubectl kustomize overlays/staging
 ```
 
 Apply:
 
 ```bash
-kubectl apply -k overlays/dev
+kubectl apply -k overlays/staging
 ```
 
-This creates the Postgres cluster, the application and — in dev and prod —
+This creates the Postgres cluster, the application and — in staging and prod —
 Metabase. The application pods crash-loop until the backend image exists; that
 is expected before the first backend release.
 
 Verify the database (the `cnpg` plugin shows roles and replication lag):
 
 ```bash
-kubectl get cluster -n dev wine-db
-kubectl cnpg status wine-db -n dev
+kubectl get cluster -n staging wine-db
+kubectl cnpg status wine-db -n staging
 ```
 
 ### 5. Analyst user
@@ -144,7 +141,7 @@ runs Metabase (staging, and prod once it exists — see the environments table
 above):
 
 ```bash
-kubectl create secret generic wine-db-analyst --namespace dev --from-literal=username=analyst --from-literal=password="$(openssl rand -base64 24)"
+kubectl create secret generic wine-db-analyst --namespace staging --from-literal=username=analyst --from-literal=password="$(openssl rand -base64 24)"
 ```
 
 No pod consumes this secret — it is where the generated password is kept so it
@@ -154,7 +151,7 @@ Then run [sql/analyst-user.sql](sql/analyst-user.sql) on the primary,
 substituting that password:
 
 ```bash
-kubectl exec -n dev -it wine-db-1 -- psql -d wine_library
+kubectl exec -n staging -it wine-db-1 -- psql -d wine_library
 ```
 
 ### 6. Metabase source
@@ -287,16 +284,18 @@ root, so this matters. The jar is world-readable after `COPY`, and `/tmp` (where
 Tomcat writes) is world-writable, so no Dockerfile change is needed. Adding an
 explicit `USER` to the Dockerfile is still good practice.
 
-**Mutable tags are pulled every start.** dev and staging deploy the moving `dev`
-and `staging` tags, so `imagePullPolicy: Always` is set — without it a node
-would keep serving a cached image after CI pushed a new one. Prod pins a release
-tag and uses `IfNotPresent`.
+**Mutable tags are pulled every start.** staging deploys the moving `staging`
+tag, so `imagePullPolicy: Always` is set — without it a node would keep serving
+a cached image after CI pushed a new one. Prod pins a release tag and uses
+`IfNotPresent`.
 
 **Seed data is gated on a Liquibase context.** The changeset that inserts default
 users carries `context: dev`, and each overlay sets `LIQUIBASE_CONTEXTS` to its
-own environment name. The value must never be left empty: Liquibase runs every
-changeset when no context is given at runtime, including the contexted ones, so
-an empty value would put the seed accounts into prod rather than keep them out.
+own environment name. No overlay passes `dev` any more, so the seed users are
+never inserted anywhere — that is the intent now that the dev environment is
+gone. The value must never be left empty: Liquibase runs every changeset when no
+context is given at runtime, including the contexted ones, so an empty value
+would put the seed accounts into prod rather than keep them out.
 
 ## Migrations
 

@@ -460,3 +460,41 @@ The disruption is real: `GKE_METADATA` on the node pool recreates every node. It
 stays inside the `IN_USE_ADDRESSES` quota of 4 because `max_surge = 0` replaces
 them one at a time, and it is applied as its own change, not folded into a
 deploy.
+
+## The `dev` environment is removed; staging is the only live environment
+
+Recorded 19 August 2026.
+
+`dev` existed so the backend could push to `development` and immediately see the
+result, and so the frontend had an API to develop against. Both audiences moved
+to staging in practice — the frontend points at `staging.wine-library.xyz` and
+the backend's own integration checks run there — which left `dev` a third
+Postgres instance, a third application pod and a third frontend pod serving
+nobody.
+
+That is not free. Autopilot bills the reservation, not the usage, and the node
+pool floor of 2 was sized against `dev` plus staging. Removing `dev` gives back
+its CPU and memory reservation and its 5Gi volume, which matters against a fixed
+trial credit rather than an open budget.
+
+The namespace was deleted outright rather than scaled to zero. A scaled-to-zero
+environment still holds its PersistentVolumeClaim, still shows up in every
+`kubectl get -A`, and still invites someone to bring it back by accident. The
+seed data made deletion cheap: `dev` was the only environment carrying the
+Liquibase `dev` context, so nothing in it was worth keeping, and it was already
+recreated from scratch on every merge.
+
+What went with it: `k8s/overlays/dev/`, the `dev` namespace, the `Deploy dev` and
+`Sync dev image` workflows, and the `backend-image-published` repository-dispatch
+trigger that only `Deploy dev` listened for. The deployer Role and RoleBinding in
+`k8s/platform/deployer-rbac.yaml` moved from the `dev` namespace to `staging`,
+since staging is now the namespace CI deploys into.
+
+The Liquibase `dev` context stays in the backend changelog. No overlay passes it
+any more, so the seed users are never inserted — which is the behaviour wanted in
+staging and prod anyway. Deleting the changeset is the backend's call, not this
+repository's.
+
+Earlier decisions in this file that reason about `dev` are left as written. They
+record why the environment was shaped the way it was, and rewriting them would
+erase the reasoning rather than update it.
