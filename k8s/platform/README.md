@@ -49,7 +49,6 @@ Point the hostnames at the reserved address. One A record per environment:
 
 | Record | Points to | Serves |
 | --- | --- | --- |
-| `dev` | reserved IP | dev frontend and API |
 | `staging` | reserved IP | staging frontend and API |
 | `bi.staging` | reserved IP | Metabase |
 | `grafana` | reserved IP | Grafana |
@@ -119,7 +118,7 @@ issuing CA is untrusted — switch the annotation to `letsencrypt`, reapply, and
 delete the old secret so a real certificate is requested:
 
 ```bash
-kubectl delete secret wine-tls -n dev
+kubectl delete secret wine-tls -n staging
 ```
 
 ## 5. Verify
@@ -127,13 +126,13 @@ kubectl delete secret wine-tls -n dev
 After an overlay is applied, the certificate should reach `Ready`:
 
 ```bash
-kubectl get certificate -n dev
+kubectl get certificate -n staging
 ```
 
 If it stays `False`, the order and challenge objects carry the reason:
 
 ```bash
-kubectl describe challenge -n dev
+kubectl describe challenge -n staging
 ```
 
 Almost always one of: DNS not resolving yet, the A record pointing somewhere
@@ -253,7 +252,8 @@ paid first, which keeps the remaining credits.
 ## Deployer access
 
 [deployer-rbac.yaml](deployer-rbac.yaml) grants the `github-deployer` Google
-service account the rights the deploy pipeline needs inside the `dev` namespace.
+service account the rights the deploy pipeline needs inside the `staging`
+namespace.
 Applied by an administrator, once:
 
 ```bash
@@ -282,8 +282,8 @@ Each environment gets one hostname, with the API under a path prefix rather than
 its own subdomain:
 
 ```
-dev.<domain>/          frontend
-dev.<domain>/api/...   backend
+staging.<domain>/          frontend
+staging.<domain>/api/...   backend
 ```
 
 Same-origin, so the browser sends no preflight and the backend needs no CORS

@@ -48,10 +48,11 @@ resource "google_container_node_pool" "primary" {
   location = var.zone
   cluster  = google_container_cluster.main.name
 
-  # Measured steady state is ~640m CPU / ~4.2Gi of pod requests across dev and
-  # staging, which fits on two e2-standard-2 with room to spare - so the floor
-  # is 2, not 3. The ceiling is 3 because the region's IN_USE_ADDRESSES quota
-  # is 4 and the ingress load balancer holds one of those four addresses.
+  # Steady state was measured at ~640m CPU / ~4.2Gi of pod requests back when
+  # dev and staging both ran; staging alone sits well under that. Two
+  # e2-standard-2 carry it with room to spare - so the floor is 2, not 3. The
+  # ceiling is 3 because the region's IN_USE_ADDRESSES quota is 4 and the
+  # ingress load balancer holds one of those four addresses.
   autoscaling {
     min_node_count = 2
     max_node_count = 3
