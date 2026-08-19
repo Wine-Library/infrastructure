@@ -257,12 +257,21 @@ depend on this; an image without the setting fails its probes and the rollout
 stalls on the old pod. Nothing routes to 9090 from the Ingress, which is the
 point: on 8090 the metrics endpoint would be public.
 
-**Health endpoints reachable without a token.** The probes are unauthenticated
-HTTP requests from the kubelet. `/actuator/health/**` has to be `permitAll` in
-the Spring Security chain, and `management.endpoint.health.probes.enabled=true`
-has to be set or the readiness and liveness paths return 404. With the endpoint
-open, `show-details` must not be `always` — it would publish the database host,
-user and pool state to anyone who can reach the port.
+**Health and metrics reachable without a token.** The probes are
+unauthenticated HTTP requests from the kubelet, and the Managed Prometheus
+collector scrapes without credentials too. Both `/actuator/health/**` and
+`/actuator/prometheus` therefore have to be `permitAll` in the Spring Security
+chain, and `management.endpoint.health.probes.enabled=true` has to be set or the
+readiness and liveness paths return 404.
+
+Moving actuator to its own port does not exempt it from security: the
+application's filter chain applies to the management connector as well, which
+showed up as a `403` on `/actuator/prometheus` from inside the cluster while the
+health probes were passing. Anything newly exposed through
+`management.endpoints.web.exposure.include` needs a matching entry here.
+
+With the endpoints open, `show-details` must not be `always` — it would publish
+the database host, user and pool state to anyone who can reach the port.
 
 **Environment variables.** `DB_URL`, `SERVER_PORT`, `SERVER_CONTEXT_PATH`,
 `LIQUIBASE_CONTEXTS`, `FRONTEND_URL` and the non-secret `JWT_*` settings come

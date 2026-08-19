@@ -5,7 +5,7 @@ run-name: deploy staging - ${{ github.actor }} - ${{ github.event_name }}
 on:
   workflow_dispatch:
   push:
-    branches: [ staging ]
+    branches: [ main ]
     paths: [ 'k8s/**' ]
 
 concurrency:
