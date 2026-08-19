@@ -15,3 +15,10 @@ datasources:
       authenticationType: gce
       defaultProject: wine-library-mate
       processingLocation: europe-central2
+  - name: GCP Monitoring
+    uid: gcp-monitoring
+    type: stackdriver
+    access: proxy
+    jsonData:
+      authenticationType: gce
+      defaultProject: wine-library-mate

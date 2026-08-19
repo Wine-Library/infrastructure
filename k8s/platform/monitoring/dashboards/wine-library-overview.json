@@ -2,7 +2,7 @@
   "title": "Wine Library — overview",
   "uid": "wine-library-overview",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "time": {
     "from": "now-6h",
@@ -418,12 +418,110 @@
       ]
     },
     {
+      "id": 10,
+      "type": "table",
+      "title": "Errors by endpoint (4xx/5xx)",
+      "description": "Same Actuator metric as the latency panel above, filtered to error statuses. Snapshots the current rate per endpoint+status, sorted by whichever is misbehaving right now.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "topk(15, sum by (uri, method, status) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"4..|5..\"}[$__rate_interval])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Application errors (log-based)",
+      "description": "Rate of ERROR-level lines wine-app writes to stdout — catches exceptions the request never surfaces as a 4xx/5xx (caught-and-swallowed failures, background job errors). Source: terraform/app_logs.tf, one day behind if the Cloud Logging sink is ever delayed.",
+      "datasource": {
+        "type": "stackdriver",
+        "uid": "gcp-monitoring"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "stackdriver",
+            "uid": "gcp-monitoring"
+          },
+          "refId": "A",
+          "queryType": "timeSeriesList",
+          "timeSeriesList": {
+            "projectName": "wine-library-mate",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "perSeriesAligner": "ALIGN_RATE",
+            "alignmentPeriod": "cloud-monitoring-auto",
+            "filters": [
+              "metric.type", "=", "logging.googleapis.com/user/wine-app-errors",
+              "AND", "resource.label.namespace_name", "=", "$namespace"
+            ],
+            "groupBys": [],
+            "view": "FULL"
+          }
+        }
+      ]
+    },
+    {
       "id": 102,
       "type": "row",
       "title": "Database",
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 26,
         "w": 24,
         "h": 1
       },
@@ -441,7 +539,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 27,
         "w": 8,
         "h": 8
       },
@@ -492,7 +590,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 19,
+        "y": 27,
         "w": 8,
         "h": 8
       },
@@ -554,7 +652,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 19,
+        "y": 27,
         "w": 8,
         "h": 8
       },
