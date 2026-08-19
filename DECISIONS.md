@@ -498,3 +498,30 @@ repository's.
 Earlier decisions in this file that reason about `dev` are left as written. They
 record why the environment was shaped the way it was, and rewriting them would
 erase the reasoning rather than update it.
+
+## Staging deploys track `main`, not a branch of its own
+
+Recorded 19 August 2026.
+
+Pull request 8 gave each environment its own branch: `Deploy dev` fired on pushes
+to `development`, `Deploy staging` on pushes to `staging`. With two environments
+that bought something real — the backend could land work on `development` and see
+it in `dev` without touching what QA was testing in staging.
+
+One environment does not need that. The branch became a second place to remember
+to push, and it silently went stale: at the point `dev` was removed, `staging`
+was sitting nine days behind `main`, still carrying the pre-Managed-Prometheus
+manifests. Deploying it would have rolled Grafana and the monitoring stack back.
+A deploy branch that nobody pushes is worse than no deploy branch, because it
+looks like a working promotion path.
+
+So `Deploy staging` now fires on pushes to `main` under `k8s/**`, and the
+`development` and `staging` branches are deleted. Promotion to prod does not need
+a branch either: prod pins a release tag in its overlay, so the tag is the
+promotion mechanism and the deploy is a `workflow_dispatch` against `main`.
+
+The scheduled workflows depended on this without it being obvious. GitHub runs
+`schedule` and `repository_dispatch` triggers only from the default branch, so
+`Sync staging image` was always running from `main` regardless of which branch
+the deploy tracked — and `Sync dev image`'s cron on a non-default branch would
+never have fired at all.
