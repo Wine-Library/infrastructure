@@ -6,6 +6,7 @@ resources:
   - app.yaml
   - ingress.yaml
   - podmonitoring.yaml
+  - networkpolicy.yaml
 
 configMapGenerator:
   - name: wine-app-config

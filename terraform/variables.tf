@@ -8,8 +8,14 @@ variable "apis" {
     "iamcredentials.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
+    "storage.googleapis.com",
     "sts.googleapis.com",
   ]
+}
+
+variable "alert_notification_email" {
+  description = "Where Cloud Monitoring alert policies send email — both the ClusterRules-derived alerts and the security audit events. No default on purpose: pick an inbox someone actually reads, in terraform.tfvars."
+  type        = string
 }
 
 variable "billing_account" {

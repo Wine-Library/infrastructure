@@ -202,33 +202,43 @@ scope for now.
 
 ## Backups
 
-Not configured yet. Once a bucket and a `gcs-backup-creds` secret exist, add a
-patch to the target overlay:
+Configured in `base/db-cluster.yaml`; each overlay patches `destinationPath`
+to its own subfolder of one bucket so staging and prod backups don't mix.
+The bucket, its service account and the HMAC key barman authenticates with
+are Terraform-managed — see `terraform/backup.tf`.
 
-```yaml
-patches:
-  - target:
-      kind: Cluster
-      name: wine-db
-    patch: |
-      - op: add
-        path: /spec/backup
-        value:
-          barmanObjectStore:
-            destinationPath: "s3://wine-db-backups/"
-            endpointURL: "https://storage.googleapis.com"
-            s3Credentials:
-              accessKeyId:
-                name: gcs-backup-creds
-                key: ACCESS_KEY_ID
-              secretAccessKey:
-                name: gcs-backup-creds
-                key: SECRET_ACCESS_KEY
-          retentionPolicy: "7d"
+GCS is S3-compatible, which is what makes the same `barmanObjectStore` block
+work against it unchanged; pointing at a different S3-compatible provider is
+a matter of swapping `endpointURL` and the bucket.
+
+The one piece Terraform cannot create is the secret — putting the HMAC
+secret in a committed values file defeats the point:
+
+```bash
+terraform -chdir=../terraform output -raw wine_db_backup_access_id
+terraform -chdir=../terraform output -raw wine_db_backup_secret
 ```
 
-GCS is S3-compatible, so the same block points at any other S3-compatible
-provider by swapping `endpointURL` and the bucket.
+```bash
+kubectl create secret generic gcs-backup-creds --namespace staging \
+  --from-literal=ACCESS_KEY_ID='<access id above>' \
+  --from-literal=SECRET_ACCESS_KEY='<secret above>'
+```
+
+Repeat per namespace that runs a Cluster — the same HMAC key works for both,
+since the IAM binding is on the bucket, not a path inside it.
+
+Verify a base backup actually landed before trusting any of this:
+
+```bash
+kubectl exec -n staging wine-db-1 -- barman-cloud-backup-list \
+  s3://wine-library-mate-wine-db-backups/staging/ \
+  --cloud-provider google-cloud-storage
+```
+
+See [RECOVERY.md](../RECOVERY.md) for the restore procedure — written, but
+not yet exercised against a real backup. Treat it as a draft until someone
+has actually restored from it once.
 
 ## Resource limits and the JVM
 
@@ -345,4 +355,7 @@ add columns nullable, and drop or rename in a later release.
 - [ ] Seed users absent from staging and prod
 - [ ] `analyst` read-only user created, and visible on tables added by later migrations
 - [ ] Metabase running and connected to `wine-db-ro` as `analyst`
-- [ ] GCS backup configured (optional, by end of month)
+- [ ] `gcs-backup-creds` secret created per namespace (Terraform provisions the
+      bucket and key; the secret itself is manual — see [Backups](#backups))
+- [ ] A base backup has actually landed in the bucket (`barman-cloud-backup-list`)
+- [ ] Restore drill run at least once — see [RECOVERY.md](../RECOVERY.md#testing-this-plan)

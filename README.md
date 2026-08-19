@@ -4,12 +4,16 @@ Infrastructure for the Wine Library project.
 
 ## Layout
 
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — one-page map of what's deployed and
+  how it fits together, with a diagram.
 - [`k8s/`](k8s/) — Kubernetes manifests as a kustomize base with one overlay per
   environment. Start with [`k8s/README.md`](k8s/README.md) for the apply order.
 - [`terraform/`](terraform/) — everything under the cluster: project, APIs,
   the cluster itself, the static IP, workload identity. See
   [`terraform/README.md`](terraform/README.md).
 - [`DECISIONS.md`](DECISIONS.md) — why things are the way they are.
+- [`RECOVERY.md`](RECOVERY.md) — backup and restore procedure.
+- [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) — what's logged and reviewed, and how often.
 
 ```bash
 kubectl apply -k k8s/overlays/staging
@@ -19,7 +23,7 @@ kubectl apply -k k8s/overlays/staging
 
 | Piece | Choice |
 | --- | --- |
-| Cluster | GKE Autopilot |
+| Cluster | GKE, zonal standard (`europe-central2-a`) — Autopilot until 2026-08-16, see `DECISIONS.md` |
 | Database | PostgreSQL via the CloudNativePG operator, in-cluster |
 | Analytics | Metabase against a read-only replica |
 | Application | Java 21 / Spring Boot 3.2, schema managed by Liquibase |
