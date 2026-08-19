@@ -8,3 +8,10 @@ datasources:
     jsonData:
       timeInterval: 60s
       httpMethod: POST
+  - name: GCP Billing
+    uid: gcp-billing
+    type: grafana-bigquery-datasource
+    jsonData:
+      authenticationType: gce
+      defaultProject: wine-library-mate
+      processingLocation: europe-central2

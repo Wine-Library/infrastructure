@@ -16,6 +16,7 @@ configMapGenerator:
   - name: grafana-dashboards
     files:
       - dashboards/wine-library-overview.json
+      - dashboards/gcp-billing.json
 
 labels:
   - pairs:
