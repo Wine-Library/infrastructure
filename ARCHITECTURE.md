@@ -167,10 +167,16 @@ The infrastructure repo consumes the `:staging` tag two ways:
 
 - **`deploy-staging.yml`** — triggers on push to `main` under `k8s/**`, applies
   `k8s/overlays/staging`. This is how a manifest change ships.
-- **`sync-staging-image.yml`** — cron, every 5 minutes, compares the digest
-  behind the `:staging` tag in ghcr.io against what's actually running and
-  restarts the deployment if it moved. This is how a new backend/frontend
-  build ships without a manifest change.
+- **`image-sync` CronJob** — runs in-cluster (`k8s/components/image-sync`),
+  every 2 minutes, comparing the digest behind the `:staging` tag in ghcr.io
+  against what's actually running for `wine-app` and `wine-frontend`, and
+  restarting whichever moved. This is how a new backend/frontend build ships
+  without a manifest change. It used to be a GitHub Actions schedule
+  (`sync-staging-image.yml`); measured over 62 hours that ran 97 of the 744
+  ticks it asked for — GitHub schedules are best-effort and silently dropped,
+  which is invisible until a deploy needs to happen quickly. The workflow now
+  only exists as a `workflow_dispatch` button for forcing an immediate check.
+  See `DECISIONS.md` for the measurement.
 
 Both authenticate to GCP via **workload identity federation** — no static
 service account key lives in either repo's secrets. The `github-deployer`
