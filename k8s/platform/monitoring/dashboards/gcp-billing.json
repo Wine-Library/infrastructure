@@ -1,0 +1,189 @@
+{
+  "title": "GCP Billing",
+  "uid": "gcp-billing",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "refresh": "",
+  "timezone": "browser",
+  "tags": [
+    "wine-library",
+    "billing"
+  ],
+  "description": "Reads the standard usage-cost export in BigQuery (billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72), not Cloud Monitoring — export lags actual spend by up to a day, so this is for trend, not a live meter.",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total cost (selected range)",
+      "datasource": {
+        "type": "grafana-bigquery-datasource",
+        "uid": "gcp-billing"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "location": "europe-central2",
+          "rawSql": "SELECT\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Daily cost by service",
+      "description": "Net of credits. Grouped by calendar day regardless of zoom — billing data has no finer resolution worth showing.",
+      "datasource": {
+        "type": "grafana-bigquery-datasource",
+        "uid": "gcp-billing"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 18,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 0,
+          "location": "europe-central2",
+          "rawSql": "SELECT\n  $__timeGroup(usage_start_time, '1d') AS time,\n  service.description AS metric,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY time, metric\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Cost by service",
+      "datasource": {
+        "type": "grafana-bigquery-datasource",
+        "uid": "gcp-billing"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "location": "europe-central2",
+          "rawSql": "SELECT\n  service.description AS Service,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS Cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY Service\nORDER BY Cost DESC"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Cost by GKE namespace",
+      "description": "From cost_management_config's namespace labeling (terraform/gke.tf). Rows with a null namespace are cost that isn't a labeled GKE workload — other GCP services, cluster overhead, or unscheduled capacity.",
+      "datasource": {
+        "type": "grafana-bigquery-datasource",
+        "uid": "gcp-billing"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "location": "europe-central2",
+          "rawSql": "SELECT\n  labels.value AS Namespace,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS Cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nLEFT JOIN UNNEST(labels) AS labels ON labels.key = 'k8s-namespace'\nWHERE $__timeFilter(usage_start_time)\nGROUP BY Namespace\nORDER BY Cost DESC"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Top 20 SKUs",
+      "datasource": {
+        "type": "grafana-bigquery-datasource",
+        "uid": "gcp-billing"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "location": "europe-central2",
+          "rawSql": "SELECT\n  sku.description AS SKU,\n  service.description AS Service,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS Cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY SKU, Service\nORDER BY Cost DESC\nLIMIT 20"
+        }
+      ]
+    }
+  ]
+}

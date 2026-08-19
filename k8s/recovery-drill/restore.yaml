@@ -12,10 +12,11 @@ spec:
     recovery:
       source: wine-db-backup
       recoveryTarget:
-        targetTime: "REPLACE_ME"
+        targetTime: "2026-08-19 12:45:09+00"
   externalClusters:
     - name: wine-db-backup
       barmanObjectStore:
+        serverName: wine-db
         destinationPath: "s3://wine-library-mate-wine-db-backups/staging/"
         endpointURL: "https://storage.googleapis.com"
         s3Credentials:

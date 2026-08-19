@@ -1,10 +1,12 @@
 # Backup and recovery
 
-> **Status: draft, not yet exercised.** The commands below are believed
-> correct — they follow CloudNativePG's documented recovery path — but nobody
-> has run them against a real backup yet. A backup nobody has restored from is
-> an assumption, not a plan. Run the drill in [Testing this plan](#testing-this-plan)
-> and replace this notice with the date and result once it's done.
+> **Status: exercised 19 August 2026, on staging.** On-demand backup at
+> 12:44:08 UTC, marker table committed at 12:45:10 UTC, recovery targeted at
+> 12:45:09 UTC (one second before the marker). The restored cluster came up
+> healthy in about 6 minutes and correctly lacked the marker table while every
+> real table (`wines`, `users`, `cart_items`, ...) was intact — proof the
+> target time took effect, not just that a backup restored. Full timing and
+> the bug found along the way are in [Testing this plan](#testing-this-plan).
 
 ## What's backed up
 
@@ -102,6 +104,7 @@ the restore itself goes wrong.
      externalClusters:
        - name: wine-db-backup
          barmanObjectStore:
+           serverName: wine-db
            destinationPath: "s3://wine-library-mate-wine-db-backups/<namespace>/"
            endpointURL: "https://storage.googleapis.com"
            s3Credentials:
@@ -112,6 +115,12 @@ the restore itself goes wrong.
                name: gcs-backup-creds
                key: SECRET_ACCESS_KEY
    ```
+
+   `serverName` matters: barman's catalog under `destinationPath` is keyed by
+   the *original* cluster's name (`wine-db`), not by whatever this
+   `externalClusters` entry is locally called (`wine-db-backup`). Leaving it
+   out defaults to the entry's own name and recovery fails with
+   `no target backup found` even though the backup exists.
 
    Omit `recoveryTarget` entirely to restore to the latest available WAL
    instead of a specific time.
@@ -161,16 +170,45 @@ kubectl cnpg backup wine-db -n <namespace>
 
 ## Testing this plan
 
-Not yet done. Do this on staging, not prod, and only once staging has data
-worth the exercise:
+Run on staging, not prod. The manifests used below live in
+`k8s/recovery-drill/` (`backup.yaml`, `restore.yaml`) rather than being typed
+by hand each time.
 
-1. Take an on-demand backup.
-2. Write a row somewhere identifiable (`INSERT INTO wines ...` with an
-   obvious marker value).
-3. Run the [point-in-time recovery](#point-in-time-recovery-bad-data-or-a-bad-migration)
-   steps, targeting a time before step 2.
-4. Confirm the marker row is **absent** from `wine-db-restore` — that's the
-   proof the target time actually took effect, not just that a backup
-   restored at all.
-5. Record how long steps 2–4 took here, and fix anything in this document
-   that didn't match reality.
+1. Take an on-demand backup: `kubectl apply -f k8s/recovery-drill/backup.yaml`,
+   wait for `kubectl get backup wine-db-drill-1 -n staging` to reach `phase:
+   completed`.
+2. Write something identifiable that isn't part of the real schema — a throwaway
+   `recovery_drill_marker` table rather than a row in `wines`, so the drill
+   can't collide with real data or a NOT NULL constraint it doesn't know about.
+3. Note the time *before* the insert (UTC), set it as `targetTime` in
+   `k8s/recovery-drill/restore.yaml`, then `kubectl apply -f
+   k8s/recovery-drill/restore.yaml`.
+4. Confirm the marker is **absent** from `wine-db-restore` and every real
+   table is present and intact — that's the proof the target time actually
+   took effect, not just that a backup restored at all.
+5. Clean up: `kubectl delete cluster wine-db-restore -n staging`, drop the
+   marker table from the real primary.
+
+### Run log — 19 August 2026, staging
+
+| Step | Time (UTC) |
+| --- | --- |
+| On-demand backup completed | 12:44:14 |
+| Marker table committed | 12:45:10.185 |
+| Recovery `targetTime` used | 12:45:09 |
+| Restored cluster healthy (`readyInstances: 1`) | ~12:51 (≈6 min after apply) |
+
+Result: `recovery_drill_marker` did not exist in `wine-db-restore`; `wines`,
+`users`, `cart_items`, `favorites`, `shopping_carts`, `verification_tokens`
+were all present. Target-time recovery works as documented.
+
+**Bug found and fixed along the way:** the `externalClusters` entry in the
+recovery YAML (both here and in `restore.yaml`) was missing `serverName:
+wine-db`. Without it, CNPG looks up the barman catalog under the
+`externalClusters` entry's own name (`wine-db-backup`), but the catalog under
+`destinationPath` is actually keyed by the *origin cluster's* name (`wine-db`)
+— confirmed with `gsutil ls -r s3://wine-library-mate-wine-db-backups/staging/`,
+which shows everything under a `wine-db/` prefix. The first restore attempt
+failed with `no target backup found` for exactly this reason; every recovery
+pod kept restarting in a loop until it was fixed. `serverName` is now set in
+both places.

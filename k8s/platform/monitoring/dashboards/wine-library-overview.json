@@ -26,17 +26,12 @@
       },
       {
         "name": "namespace",
-        "type": "query",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
-        "query": "label_values(kube_pod_info, namespace)",
+        "type": "custom",
+        "query": "staging,prod",
         "current": {
           "text": "staging",
           "value": "staging"
         },
-        "refresh": 1,
         "includeAll": false,
         "label": "Namespace",
         "sort": 1
@@ -592,8 +587,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}[1h]))",
-          "legendFormat": "{{pod}}",
+          "expr": "sum by (pod_name) (kubernetes_io:container_restart_count{namespace_name=\"$namespace\"})",
+          "legendFormat": "{{pod_name}}",
           "range": true,
           "refId": "A"
         }
