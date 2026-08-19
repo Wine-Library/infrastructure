@@ -27,7 +27,7 @@ jobs:
       - uses: google-github-actions/get-gke-credentials@v3
         with:
           cluster_name: wine-library
-          location: europe-central2
+          location: europe-central2-a
 
       - run: kubectl apply -k k8s/overlays/${{ inputs.environment }}
 
