@@ -120,15 +120,15 @@ spec:
                   name: wine-app-wines-api
                   key: key
           # Steady-state usage is ~5m CPU and ~450Mi. The CPU request is sized
-          # for that, not for JVM warmup - the 500m limit covers the startup
-          # burst, and startupProbe allows up to 5 minutes for it.
+          # for that, not for JVM warmup - the 300m limit (3x request) covers
+          # the startup burst, and startupProbe allows up to 5 minutes for it.
           resources:
             requests:
               memory: "512Mi"
               cpu: "100m"
             limits:
               memory: "768Mi"
-              cpu: "500m"
+              cpu: "300m"
           startupProbe:
             httpGet:
               path: /actuator/health/readiness
