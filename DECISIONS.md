@@ -547,3 +547,33 @@ grants every future workflow in this repository a writable token by default,
 including anything added later that has no business holding one. Repeating four
 lines in the two calling jobs keeps the default read-only and puts the grant
 where it can be read next to the thing that needs it.
+
+## Metabase's scaler identity moves out of the overlay, next to the deployer grant
+
+Recorded 19 August 2026.
+
+The first real `Deploy staging` run failed on `kubectl apply -k`. Everything from
+`base/` went through as `unchanged`; the six objects that did not exist in the
+`dev` overlay the deployer Role was written against came back `Forbidden` — the
+`metabase-scaler` ServiceAccount, Role and RoleBinding, two CronJobs, and the two
+`PodMonitoring` objects. The Role had never been wrong; it had simply never been
+asked to apply the staging overlay, because staging had never deployed.
+
+Widening the Role to cover Roles and RoleBindings would not have worked anyway.
+`metabase-scaler` grants `deployments/scale`, which `github-deployer` does not
+hold, and Kubernetes refuses to let a subject create a Role carrying permissions
+it lacks. Getting the apply to pass would have meant granting the pipeline
+`deployments/scale` as well, and then `escalate` for the next case — unwinding
+the boundary this repository set on purpose.
+
+So the ServiceAccount, Role and RoleBinding move to
+`k8s/platform/metabase-scaler-rbac.yaml`, applied once by an administrator
+alongside `deployer-rbac.yaml`. The CronJobs stay in the Metabase component and
+deploy normally: what the pipeline manages is the schedule, not the identity the
+schedule runs as. The deployer Role gains `cronjobs` and `podmonitorings`, both
+ordinary workload objects with no privilege to hand out.
+
+The general lesson is about the Role, not about Metabase. It has to track what
+the overlay actually renders, and until now nothing checked that. `kubectl
+kustomize k8s/overlays/staging | grep '^kind:' | sort -u` is the list it has to
+cover.
