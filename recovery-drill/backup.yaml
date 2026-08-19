@@ -1,0 +1,8 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: wine-db-drill-1
+  namespace: staging
+spec:
+  cluster:
+    name: wine-db
