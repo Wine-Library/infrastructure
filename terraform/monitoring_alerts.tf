@@ -43,14 +43,13 @@ resource "google_monitoring_alert_policy" "wine_library_alerts" {
 
   notification_channels = [google_monitoring_notification_channel.email.name]
 
-  # Re-notifies if the same alert is still firing after half an hour rather
-  # than staying silent until it resolves.
+  # notification_rate_limit only applies to log-based alert policies — this
+  # one's condition is a GMP/Prometheus metric, not a log-based metric, and
+  # Cloud Monitoring rejects the field outright on that combination. Closing
+  # (and therefore able to re-open and re-notify) after half an hour is the
+  # closest available substitute for "nag again if still firing."
   alert_strategy {
     auto_close = "1800s"
-
-    notification_rate_limit {
-      period = "1800s"
-    }
   }
 
   documentation {
