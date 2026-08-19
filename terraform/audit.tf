@@ -62,7 +62,7 @@ resource "google_monitoring_alert_policy" "security_audit_events" {
     display_name = "Service account key created"
 
     condition_threshold {
-      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.service_account_key_created.name}\""
+      filter          = "resource.type=\"project\" AND metric.type=\"logging.googleapis.com/user/${google_logging_metric.service_account_key_created.name}\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0
       duration        = "0s"
