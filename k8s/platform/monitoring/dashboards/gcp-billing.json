@@ -2,7 +2,7 @@
   "title": "GCP Billing",
   "uid": "gcp-billing",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "time": {
     "from": "now-30d",
@@ -14,12 +14,12 @@
     "wine-library",
     "billing"
   ],
-  "description": "Reads the standard usage-cost export in BigQuery (billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72), not Cloud Monitoring — export lags actual spend by up to a day, so this is for trend, not a live meter.",
+  "description": "Reads the standard usage-cost export in BigQuery (billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72), not Cloud Monitoring — export lags actual spend by up to a day, so this is for trend, not a live meter. Gross cost is what usage would cost without promotional credits; net cost is what actually lands on the bill. On a fresh/trial billing account, credits typically cover gross cost in full, so net sits near $0 — gross is the number that tracks growing usage.",
   "panels": [
     {
       "id": 1,
       "type": "stat",
-      "title": "Total cost (selected range)",
+      "title": "Gross cost — before credits",
       "datasource": {
         "type": "grafana-bigquery-datasource",
         "uid": "gcp-billing"
@@ -44,6 +44,74 @@
           "rawQuery": true,
           "format": 1,
           "location": "europe-central2",
+          "rawSql": "SELECT\n  SUM(cost) AS cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Credits applied",
+      "datasource": {
+        "type": "grafana-bigquery-datasource",
+        "uid": "gcp-billing"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "location": "europe-central2",
+          "rawSql": "SELECT\n  SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS credits\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Net cost — actual bill",
+      "datasource": {
+        "type": "grafana-bigquery-datasource",
+        "uid": "gcp-billing"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 6,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "location": "europe-central2",
           "rawSql": "SELECT\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)"
         }
       ]
@@ -51,8 +119,8 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Daily cost by service",
-      "description": "Net of credits. Grouped by calendar day regardless of zoom — billing data has no finer resolution worth showing.",
+      "title": "Daily gross cost by service",
+      "description": "Before credits — tracks usage growth even while credits keep the actual bill at $0.",
       "datasource": {
         "type": "grafana-bigquery-datasource",
         "uid": "gcp-billing"
@@ -61,7 +129,7 @@
         "x": 6,
         "y": 0,
         "w": 18,
-        "h": 10
+        "h": 16
       },
       "fieldConfig": {
         "defaults": {
@@ -84,7 +152,7 @@
           "rawQuery": true,
           "format": 0,
           "location": "europe-central2",
-          "rawSql": "SELECT\n  $__timeGroup(usage_start_time, '1d') AS time,\n  service.description AS metric,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY time, metric\nORDER BY time"
+          "rawSql": "SELECT\n  $__timeGroup(usage_start_time, '1d') AS time,\n  service.description AS metric,\n  SUM(cost) AS cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY time, metric\nORDER BY time"
         }
       ]
     },
@@ -92,14 +160,15 @@
       "id": 3,
       "type": "table",
       "title": "Cost by service",
+      "description": "Gross, credits and net side by side, so a $0 net doesn't hide which service is actually driving usage.",
       "datasource": {
         "type": "grafana-bigquery-datasource",
         "uid": "gcp-billing"
       },
       "gridPos": {
         "x": 0,
-        "y": 6,
-        "w": 6,
+        "y": 16,
+        "w": 8,
         "h": 10
       },
       "fieldConfig": {
@@ -116,23 +185,23 @@
           "rawQuery": true,
           "format": 1,
           "location": "europe-central2",
-          "rawSql": "SELECT\n  service.description AS Service,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS Cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY Service\nORDER BY Cost DESC"
+          "rawSql": "SELECT\n  service.description AS Service,\n  SUM(cost) AS `Gross cost`,\n  SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS Credits,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS `Net cost`\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY Service\nORDER BY `Gross cost` DESC"
         }
       ]
     },
     {
       "id": 4,
       "type": "table",
-      "title": "Cost by GKE namespace",
+      "title": "Gross cost by GKE namespace",
       "description": "From cost_management_config's namespace labeling (terraform/gke.tf). Rows with a null namespace are cost that isn't a labeled GKE workload — other GCP services, cluster overhead, or unscheduled capacity.",
       "datasource": {
         "type": "grafana-bigquery-datasource",
         "uid": "gcp-billing"
       },
       "gridPos": {
-        "x": 0,
+        "x": 8,
         "y": 16,
-        "w": 12,
+        "w": 8,
         "h": 10
       },
       "fieldConfig": {
@@ -149,22 +218,22 @@
           "rawQuery": true,
           "format": 1,
           "location": "europe-central2",
-          "rawSql": "SELECT\n  labels.value AS Namespace,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS Cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nLEFT JOIN UNNEST(labels) AS labels ON labels.key = 'k8s-namespace'\nWHERE $__timeFilter(usage_start_time)\nGROUP BY Namespace\nORDER BY Cost DESC"
+          "rawSql": "SELECT\n  labels.value AS Namespace,\n  SUM(cost) AS Cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nLEFT JOIN UNNEST(labels) AS labels ON labels.key = 'k8s-namespace'\nWHERE $__timeFilter(usage_start_time)\nGROUP BY Namespace\nORDER BY Cost DESC"
         }
       ]
     },
     {
       "id": 5,
       "type": "table",
-      "title": "Top 20 SKUs",
+      "title": "Top 20 SKUs by gross cost",
       "datasource": {
         "type": "grafana-bigquery-datasource",
         "uid": "gcp-billing"
       },
       "gridPos": {
-        "x": 12,
+        "x": 16,
         "y": 16,
-        "w": 12,
+        "w": 8,
         "h": 10
       },
       "fieldConfig": {
@@ -181,7 +250,7 @@
           "rawQuery": true,
           "format": 1,
           "location": "europe-central2",
-          "rawSql": "SELECT\n  sku.description AS SKU,\n  service.description AS Service,\n  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS Cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY SKU, Service\nORDER BY Cost DESC\nLIMIT 20"
+          "rawSql": "SELECT\n  sku.description AS SKU,\n  service.description AS Service,\n  SUM(cost) AS Cost\nFROM `wine-library-mate.billing_export.gcp_billing_export_resource_v1_010EF5_39FD45_37CA72`\nWHERE $__timeFilter(usage_start_time)\nGROUP BY SKU, Service\nORDER BY Cost DESC\nLIMIT 20"
         }
       ]
     }
