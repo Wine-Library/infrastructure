@@ -413,8 +413,10 @@ nothing consumed what they collected. Retention is 24 months against three days
 on a disk we would own, and it survived the cluster being recreated on
 2026-08-16, which a PVC would not have.
 
-What we give up is Alertmanager, replaced by the `Rules` CRD writing back into
-Cloud Monitoring, and independence from Google — the same argument that chose
+What we give up is running our own Alertmanager - GMP starts a managed one in
+`gmp-system` by itself, together with a rule-evaluator, as soon as the first
+`ClusterRules` object exists, and alerts are routed through Cloud Monitoring
+policies rather than a receiver we configure - and independence from Google — the same argument that chose
 CloudNativePG points the other way here, and loses to the node price.
 
 The bill is now a function of cardinality, which is why the scrape interval is
