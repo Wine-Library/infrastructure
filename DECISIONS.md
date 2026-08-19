@@ -474,10 +474,12 @@ the backend's own integration checks run there — which left `dev` a third
 Postgres instance, a third application pod and a third frontend pod serving
 nobody.
 
-That is not free. Autopilot bills the reservation, not the usage, and the node
-pool floor of 2 was sized against `dev` plus staging. Removing `dev` gives back
-its CPU and memory reservation and its 5Gi volume, which matters against a fixed
-trial credit rather than an open budget.
+That is not free. This cluster is Standard, not Autopilot — billing follows the
+nodes in `primary-2`, not the pod requests — so what `dev` actually cost was
+scheduling pressure: its requests were part of what sized the pool's floor at 2
+and what pushed it toward the ceiling of 3. Removing it gives that headroom back,
+along with a 5Gi volume, which is billed directly. Against a fixed trial credit
+rather than an open budget, both matter.
 
 The namespace was deleted outright rather than scaled to zero. A scaled-to-zero
 environment still holds its PersistentVolumeClaim, still shows up in every
@@ -547,3 +549,95 @@ grants every future workflow in this repository a writable token by default,
 including anything added later that has no business holding one. Repeating four
 lines in the two calling jobs keeps the default read-only and puts the grant
 where it can be read next to the thing that needs it.
+
+## Metabase's scaler identity moves out of the overlay, next to the deployer grant
+
+Recorded 19 August 2026.
+
+The first real `Deploy staging` run failed on `kubectl apply -k`. Everything from
+`base/` went through as `unchanged`; the six objects that did not exist in the
+`dev` overlay the deployer Role was written against came back `Forbidden` — the
+`metabase-scaler` ServiceAccount, Role and RoleBinding, two CronJobs, and the two
+`PodMonitoring` objects. The Role had never been wrong; it had simply never been
+asked to apply the staging overlay, because staging had never deployed.
+
+Widening the Role to cover Roles and RoleBindings would not have worked anyway.
+`metabase-scaler` grants `deployments/scale`, which `github-deployer` does not
+hold, and Kubernetes refuses to let a subject create a Role carrying permissions
+it lacks. Getting the apply to pass would have meant granting the pipeline
+`deployments/scale` as well, and then `escalate` for the next case — unwinding
+the boundary this repository set on purpose.
+
+So the ServiceAccount, Role and RoleBinding move to
+`k8s/platform/metabase-scaler-rbac.yaml`, applied once by an administrator
+alongside `deployer-rbac.yaml`. The CronJobs stay in the Metabase component and
+deploy normally: what the pipeline manages is the schedule, not the identity the
+schedule runs as. The deployer Role gains `cronjobs` and `podmonitorings`, both
+ordinary workload objects with no privilege to hand out.
+
+The general lesson is about the Role, not about Metabase. It has to track what
+the overlay actually renders, and until now nothing checked that. `kubectl
+kustomize k8s/overlays/staging | grep '^kind:' | sort -u` is the list it has to
+cover.
+
+## The image watcher covers both services, and is a backstop rather than the path
+
+Recorded 19 August 2026.
+
+`Sync image` polls ghcr.io for the digest behind a moving tag and restarts the
+Deployment when it moves. It was written for the backend and hardcoded
+`wine-library/backend`, which was invisible while nothing worked: a push to the
+frontend's `staging` branch built an image that then sat in the registry until
+someone happened to deploy the infrastructure repository. The repository and the
+Deployment are now inputs, and `Sync staging image` calls the workflow twice
+through a matrix, once per service. `fail-fast` is off so a registry hiccup on
+one does not strand the other.
+
+The watcher exists so that an image pushed from another repository eventually
+lands without anyone touching this one. `Deploy staging` is what makes a change
+land *now*, and it runs on push to `main` under `k8s/**`. The schedule itself no
+longer lives in GitHub Actions — see the next section for the measurements that
+moved it.
+
+Comparing digests rather than tags is the point. Both services deploy the moving
+`staging` tag, so the tag in the manifest never changes and Kubernetes sees no
+reason to do anything; the digest behind it is the only thing that moves.
+
+## The image watcher's schedule moves into the cluster
+
+Recorded 19 August 2026.
+
+`Sync staging image` asked GitHub for `*/5`. Measured across the 62 hours of
+history the API still held, it got 97 runs where the expression asks for 744 —
+13%. The gap between consecutive runs averaged 39 minutes, with a minimum of 17
+and a maximum of 105.
+
+The shape matters more than the average. GitHub does not queue a missed tick and
+run it late; it drops it. So the schedule does not degrade into "a bit slower
+under load", it degrades into an arbitrary interval with no upper bound, and
+nothing in the repository says so. Two further properties are worth writing down
+because neither is visible from the workflow file: schedules are throttled first
+on public repositories, which this one is; and GitHub disables scheduled
+workflows outright after 60 days without a commit, silently. A project that goes
+quiet over a break comes back to a watcher that no longer runs and no failure
+anywhere to show it.
+
+None of this is fixable from the workflow file, because the schedule is not ours.
+The check itself needs nothing from GitHub — a digest from ghcr.io, the digest
+running in the cluster, and a rollout restart when they differ, all of which are
+reachable from inside the cluster. So it runs there instead, as a CronJob in
+`k8s/components/image-sync/` on `*/2`, with an identity that can patch exactly
+the two Deployments that carry a moving tag and nothing else.
+
+`Sync staging image` stays, without its `schedule`. It is the manual button now:
+a way to force a check immediately through the same code path, which is also what
+makes the path testable without waiting for a tick.
+
+The component is opt-in per overlay rather than part of `base/`. Prod pins a
+release tag, so there is no moving digest to watch and a watcher there would be
+an unattended thing that restarts production on a registry push.
+
+The one cost is the image. The check needs a shell, `curl`, `jq` and `kubectl` in
+one container, and `registry.k8s.io/kubectl` is distroless with no shell, so this
+is the only third-party image the cluster runs. It is pinned to a version rather
+than tracking `latest`.

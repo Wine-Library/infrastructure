@@ -2,9 +2,10 @@ name: Sync staging image
 
 run-name: sync staging image - ${{ github.event_name }}
 
+# The schedule moved into the cluster - see k8s/components/image-sync/. What is
+# left here is the manual button: a way to force a check without waiting for the
+# CronJob's next tick, using the same code path.
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -13,6 +14,16 @@ concurrency:
 
 jobs:
   sync:
+    strategy:
+      # Backend and frontend are independent; a registry hiccup on one should
+      # not stop the other from being rolled out.
+      fail-fast: false
+      matrix:
+        include:
+          - deployment: wine-app
+            image_repo: wine-library/backend
+          - deployment: wine-frontend
+            image_repo: wine-library/frontend
     permissions:
       contents: read
       id-token: write
@@ -20,4 +31,6 @@ jobs:
     with:
       namespace: staging
       image_tag: staging
+      image_repo: ${{ matrix.image_repo }}
+      deployment: ${{ matrix.deployment }}
     secrets: inherit

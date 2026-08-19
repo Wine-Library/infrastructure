@@ -1,0 +1,123 @@
+# Watches ghcr.io for the digest behind the moving tag each service deploys and
+# restarts the Deployment when it moves.
+#
+# This used to be a GitHub Actions cron. It was declared `*/5` and measured, over
+# 62 hours, at 97 runs out of the 744 it asked for - a mean gap of 39 minutes and
+# a worst case of 105. GitHub schedules are best effort, missed ticks are dropped
+# rather than queued, and they are switched off entirely after 60 days without a
+# commit. None of that is visible until something needs to be deployed quickly.
+# Running the same check from inside the cluster puts the schedule under our own
+# control; see DECISIONS.md.
+#
+# Prod pins a release tag and does not need this - the component is opt-in per
+# overlay for exactly that reason.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: image-sync
+  labels:
+    app: image-sync
+spec:
+  schedule: "*/2 * * * *"
+  # A slow rollout must not stack a second checker on top of the first.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 60
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # Long enough for two rollouts to be waited on, short enough that a wedged
+      # job cannot block the next tick indefinitely.
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: image-sync
+        spec:
+          serviceAccountName: image-sync
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          volumes:
+            # kubectl writes a discovery cache under $HOME and curl needs
+            # scratch space; the root filesystem stays read-only.
+            - name: tmp
+              emptyDir: {}
+          containers:
+            - name: sync
+              # Needs a shell, curl, jq and kubectl in one image.
+              # registry.k8s.io/kubectl is distroless and has no shell, so it
+              # cannot be used here. Pinned rather than floating on `latest`.
+              image: alpine/k8s:1.34.1
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: IMAGE_TAG
+                  value: staging
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+
+                  accept='application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json'
+                  rc=0
+
+                  sync() {
+                    repo="$1"
+                    deployment="$2"
+
+                    token=$(curl -sf "https://ghcr.io/token?scope=repository:${repo}:pull&service=ghcr.io" | jq -r .token)
+
+                    registry=$(curl -sfI \
+                      -H "Authorization: Bearer ${token}" \
+                      -H "Accept: ${accept}" \
+                      "https://ghcr.io/v2/${repo}/manifests/${IMAGE_TAG}" \
+                      | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:"{print $2}')
+
+                    running=$(kubectl get pods -l "app=${deployment}" \
+                      -o jsonpath='{.items[0].status.containerStatuses[0].imageID}' | sed 's/.*@//')
+
+                    echo "${deployment}: registry=${registry:-<empty>} running=${running:-<empty>}"
+
+                    if [ -z "${registry}" ]; then
+                      echo "${deployment}: could not read digest from registry"
+                      return 1
+                    fi
+
+                    if [ "${registry}" = "${running}" ]; then
+                      echo "${deployment}: up to date"
+                      return 0
+                    fi
+
+                    echo "${deployment}: image changed, restarting"
+                    kubectl rollout restart "deployment/${deployment}"
+                    kubectl rollout status "deployment/${deployment}" --timeout=300s
+                  }
+
+                  # One failing service must not hide the other, so the exit
+                  # code is collected rather than tripping `set -e`.
+                  sync wine-library/backend  wine-app      || rc=1
+                  sync wine-library/frontend wine-frontend || rc=1
+
+                  exit "${rc}"
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "10m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "200m"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]

@@ -1,0 +1,55 @@
+# The identity the Metabase scale-to-zero CronJobs run as. The CronJobs
+# themselves live in k8s/components/metabase/scheduler.yaml and are applied by
+# the deploy pipeline; this ServiceAccount, Role and RoleBinding deliberately do
+# not, for the same reason deployer-rbac.yaml sits here: a pipeline that can
+# apply Roles can grant itself anything by merging one pull request.
+#
+# Kubernetes enforces the same boundary independently. This Role hands out
+# `deployments/scale`, which `github-deployer` does not hold, so an apply from
+# the pipeline would be refused as an attempt to grant extra privileges no
+# matter what the pipeline's own Role said.
+#
+# Applied by an administrator, once per namespace that runs Metabase - staging
+# today, prod when it comes up, swapping `namespace` below.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metabase-scaler
+  namespace: staging
+  labels:
+    app: metabase
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: metabase-scaler
+  namespace: staging
+  labels:
+    app: metabase
+rules:
+  # Scoped to the one Deployment it is allowed to touch.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["metabase"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["metabase"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metabase-scaler
+  namespace: staging
+  labels:
+    app: metabase
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: metabase-scaler
+subjects:
+  - kind: ServiceAccount
+    name: metabase-scaler
+    namespace: staging

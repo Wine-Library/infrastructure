@@ -19,6 +19,14 @@ rules:
   - apiGroups: ["postgresql.cnpg.io"]
     resources: ["clusters"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # The Metabase scale-to-zero schedule.
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # Scrape configuration for Google Managed Prometheus, part of base/.
+  - apiGroups: ["monitoring.googleapis.com"]
+    resources: ["podmonitorings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

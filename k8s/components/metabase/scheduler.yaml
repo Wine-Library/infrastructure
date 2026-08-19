@@ -6,45 +6,10 @@
 #
 # The PVC, Service, Ingress and TLS certificate all survive a scale to zero, so
 # bringing it back up is just the replica count - no data loss, no new cert.
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: metabase-scaler
-  labels:
-    app: metabase
-automountServiceAccountToken: true
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: metabase-scaler
-  labels:
-    app: metabase
-rules:
-  # Scoped to the one Deployment it is allowed to touch.
-  - apiGroups: ["apps"]
-    resources: ["deployments"]
-    resourceNames: ["metabase"]
-    verbs: ["get"]
-  - apiGroups: ["apps"]
-    resources: ["deployments/scale"]
-    resourceNames: ["metabase"]
-    verbs: ["get", "patch", "update"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: metabase-scaler
-  labels:
-    app: metabase
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: metabase-scaler
-subjects:
-  - kind: ServiceAccount
-    name: metabase-scaler
+#
+# The ServiceAccount, Role and RoleBinding these CronJobs run as are NOT here -
+# they live in k8s/platform/metabase-scaler-rbac.yaml and are applied by an
+# administrator. The deploy pipeline may not apply RBAC; see that file.
 ---
 apiVersion: batch/v1
 kind: CronJob

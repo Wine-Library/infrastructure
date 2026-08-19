@@ -267,18 +267,27 @@ Applied by an administrator, once:
 
 ```bash
 kubectl apply -f k8s/platform/deployer-rbac.yaml
+kubectl apply -f k8s/platform/metabase-scaler-rbac.yaml
 ```
 
-It deliberately lives here rather than in the deployment overlay. A pipeline that
+Both deliberately live here rather than in the deployment overlay. A pipeline that
 applies its own Role can grant itself anything by merging one pull request, so
 the grant has to sit outside what the pipeline applies. Kubernetes pushes in the
 same direction: it refuses to let a subject create a Role carrying permissions
 that subject does not already hold.
 
+[metabase-scaler-rbac.yaml](metabase-scaler-rbac.yaml) is the second file for
+exactly that reason. The Metabase scale-to-zero CronJobs run as their own
+ServiceAccount holding `deployments/scale` on the `metabase` Deployment — a
+permission `github-deployer` does not have. The CronJobs stay in the overlay and
+deploy normally; the identity they run as does not.
+
 The role covers only what the overlay contains, read-only on pods for
 `rollout status`, and no `delete` — a bad manifest can spoil an object but cannot
 remove a database along with its volume. Secrets are absent entirely, so a
-compromised runner cannot read the database password or the JWT signing key.
+compromised runner cannot read the database password or the JWT signing key. Keep
+it in step with the overlay: `kubectl kustomize k8s/overlays/staging | grep '^kind:' | sort -u`
+lists everything the pipeline has to be able to apply.
 
 GCP IAM and Kubernetes RBAC answer different questions here. The service account
 holds `roles/container.clusterViewer` project-wide, which only lets it fetch
