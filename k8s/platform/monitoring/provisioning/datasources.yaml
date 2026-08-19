@@ -1,0 +1,10 @@
+apiVersion: 1
+datasources:
+  - name: Managed Prometheus
+    type: prometheus
+    access: proxy
+    url: http://frontend.monitoring.svc:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 60s
+      httpMethod: POST

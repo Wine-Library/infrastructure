@@ -1,0 +1,56 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterRules
+metadata:
+  name: wine-library
+  labels:
+    app.kubernetes.io/part-of: wine-library
+spec:
+  groups:
+    - name: availability
+      interval: 60s
+      rules:
+        - alert: WineAppDown
+          expr: up{job="wine-app"} == 0
+          for: 2m
+          labels:
+            severity: page
+          annotations:
+            summary: "wine-app in {{ $labels.namespace }} has not answered a scrape for two minutes"
+
+        - alert: WineAppHighErrorRate
+          expr: |
+            sum by (namespace) (rate(nginx_ingress_controller_requests{status=~"5.."}[5m]))
+              / clamp_min(sum by (namespace) (rate(nginx_ingress_controller_requests[5m])), 0.001)
+              > 0.05
+          for: 5m
+          labels:
+            severity: page
+          annotations:
+            summary: "More than 5% of requests in {{ $labels.namespace }} are failing with 5xx"
+
+    - name: saturation
+      interval: 60s
+      rules:
+        - alert: HikariPoolExhausted
+          expr: hikaricp_connections_pending > 0
+          for: 1m
+          labels:
+            severity: page
+          annotations:
+            summary: "Requests are queuing for a database connection in {{ $labels.namespace }}"
+
+        - alert: PostgresReplicationLag
+          expr: max by (namespace) (cnpg_pg_replication_lag) > 30
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Postgres replica in {{ $labels.namespace }} is more than 30s behind"
+
+        - alert: NodeMemoryPressure
+          expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Node {{ $labels.node }} is under memory pressure"

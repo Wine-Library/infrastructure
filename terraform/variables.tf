@@ -19,7 +19,7 @@ variable "billing_account" {
 }
 
 variable "cluster_name" {
-  description = "Name of the GKE Autopilot cluster."
+  description = "Name of the GKE cluster."
   type        = string
   default     = "wine-library"
 }
@@ -34,6 +34,18 @@ variable "deployer_service_account_id" {
   description = "Account ID (local part of the email) of the GitHub Actions deploy service account."
   type        = string
   default     = "github-deployer"
+}
+
+variable "grafana_datasource_display_name" {
+  description = "Display name of the service account Grafana reads Cloud Monitoring through."
+  type        = string
+  default     = "Grafana datasource"
+}
+
+variable "grafana_datasource_service_account_id" {
+  description = "Account ID (local part of the email) of the service account Grafana reads Cloud Monitoring through."
+  type        = string
+  default     = "grafana-datasource"
 }
 
 variable "github_repository" {

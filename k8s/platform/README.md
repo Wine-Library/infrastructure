@@ -52,6 +52,7 @@ Point the hostnames at the reserved address. One A record per environment:
 | `dev` | reserved IP | dev frontend and API |
 | `staging` | reserved IP | staging frontend and API |
 | `bi.staging` | reserved IP | Metabase |
+| `grafana` | reserved IP | Grafana |
 | `@` and `www` | reserved IP | prod, when it exists |
 
 DNS has to resolve before certificates can be issued — Let's Encrypt validates by
@@ -137,6 +138,88 @@ kubectl describe challenge -n dev
 
 Almost always one of: DNS not resolving yet, the A record pointing somewhere
 else, or the hostname in the Ingress not matching the record.
+
+## 6. Monitoring
+
+Metrics are stored by Google Managed Prometheus and drawn by a Grafana that
+keeps nothing of its own — see [DECISIONS.md](../../DECISIONS.md) for why, and
+the collectors in `gmp-system` are already running, installed with the cluster.
+What follows connects things to them.
+
+The order matters in one place only: the `frontend` proxy cannot authenticate
+until Workload Identity is on the cluster, and turning that on recreates every
+node.
+
+**Terraform first.** `workload_identity_config`, `workload_metadata_config`,
+`cost_management_config` and the trimmed `monitoring_config` all live in
+`terraform/gke.tf`, and the service account Grafana reads Cloud Monitoring
+through is in `terraform/iam.tf`.
+
+```bash
+terraform -chdir=terraform apply
+```
+
+Node recreation is the slow part — one node at a time, because `max_surge = 0`
+keeps the pool inside the `IN_USE_ADDRESSES` quota of 4. Do it on its own, not
+alongside a deploy, and confirm before continuing:
+
+```bash
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.cloud\.google\.com/gke-metadata-server-enabled}{"\n"}{end}'
+```
+
+**Metrics from the ingress controller.** Off by default, and the only
+measurement of the product taken from outside the application:
+
+```bash
+helm upgrade ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --reuse-values --set controller.metrics.enabled=true
+```
+
+```bash
+kubectl apply -f k8s/platform/ingress-nginx-metrics.yaml
+```
+
+**The Grafana admin secret**, by hand — `*-secret.yaml` is gitignored and this
+never becomes a file:
+
+```bash
+kubectl create secret generic grafana-admin -n monitoring --from-literal=username=admin --from-literal=password="$(openssl rand -base64 24)"
+```
+
+Read it back once and put it in the password manager; there is no second
+chance short of resetting it.
+
+```bash
+kubectl get secret grafana-admin -n monitoring -o jsonpath='{.data.password}' | base64 -d
+```
+
+**Grafana and the query proxy:**
+
+```bash
+kubectl apply -k k8s/platform/monitoring
+```
+
+```bash
+kubectl apply -f k8s/platform/monitoring/rules.yaml
+```
+
+`rules.yaml` is applied separately because `ClusterRules` is cluster-scoped and
+kustomize, which has no schema for the CRD, would stamp a namespace onto it.
+
+**Verify** the proxy answers before opening the UI — a datasource that cannot
+authenticate looks identical to one that has no data:
+
+```bash
+kubectl exec -n monitoring deploy/grafana -- wget -qO- 'http://frontend.monitoring.svc:9090/api/v1/query?query=up' | head -c 400
+```
+
+A `403` here means the two halves of the Workload Identity binding do not agree:
+the annotation on the `frontend` service account and
+`google_service_account_iam_member.grafana_datasource_workload_identity`.
+
+**Alert delivery is not configured by any of this.** The rules evaluate inside
+Managed Prometheus and write to `prometheus.googleapis.com/ALERTS`; turning that
+into a message to a person is an alerting policy plus a notification channel in
+Cloud Monitoring, created per rule in the console.
 
 ## When a pod stays Pending
 

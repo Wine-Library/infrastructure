@@ -1,0 +1,28 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: wine-app
+  labels:
+    app: wine-app
+spec:
+  selector:
+    matchLabels:
+      app: wine-app
+  endpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: 60s
+---
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: wine-db
+  labels:
+    app: wine-db
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: wine-db
+  endpoints:
+    - port: metrics
+      interval: 60s

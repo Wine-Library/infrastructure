@@ -247,12 +247,18 @@ where the two sides have to agree; each one fails loudly rather than silently,
 but they are cheaper to get right up front.
 
 **Port 8090 behind context path `/api/v1`.** Set by `SERVER_PORT` and
-`SERVER_CONTEXT_PATH` in the ConfigMap. The context path also shifts the actuator
-endpoints, which is why the probes point at `/api/v1/actuator/health/...`. Those
-probe paths and the ConfigMap value have to move together — changing the context
-path alone breaks the probes. Moving actuator to its own port with
-`management.server.port` would decouple them and keep the endpoint off any future
-Ingress.
+`SERVER_CONTEXT_PATH` in the ConfigMap. Application traffic only — the context
+path no longer affects the probes.
+
+**Port 9090 for actuator.** The image has to set `management.server.port=9090`,
+`management.endpoints.web.exposure.include=health,prometheus` and carry
+`micrometer-registry-prometheus`. The management server is a second connector
+and does not inherit the context path, so health lives at
+`/actuator/health/...` and metrics at `/actuator/prometheus`, both at the root
+of 9090. The probes and the `PodMonitoring` in `base/podmonitoring.yaml` both
+depend on this; an image without the setting fails its probes and the rollout
+stalls on the old pod. Nothing routes to 9090 from the Ingress, which is the
+point: on 8090 the metrics endpoint would be public.
 
 **Health endpoints reachable without a token.** The probes are unauthenticated
 HTTP requests from the kubelet. `/actuator/health/**` has to be `permitAll` in
@@ -326,7 +332,7 @@ add columns nullable, and drop or rename in a later release.
 - [ ] `wine-db-app`, `wine-app-jwt`, `wine-app-mail` and `wine-app-wines-api` secrets created per namespace, none in git
 - [ ] `wine-db` cluster healthy, replica streaming with near-zero lag
 - [ ] Backend image published and reachable at the path in `base/app.yaml`
-- [ ] Backend serves `/api/v1/actuator/health/readiness` without a token
+- [ ] Backend serves `/actuator/health/readiness` on port 9090 without a token
 - [ ] `wine-app` pods ready, no OOMKilled restarts under load
 - [ ] Seed users absent from staging and prod
 - [ ] `analyst` read-only user created, and visible on tables added by later migrations
