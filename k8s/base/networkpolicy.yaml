@@ -1,0 +1,33 @@
+# Right now anything in the namespace can reach Postgres on 5432 — a
+# compromised or misconfigured pod that has no business talking to the
+# database still can. This restricts ingress to exactly who needs it.
+#
+# cnpg.io/cluster: wine-db is included in its own allow-list: streaming
+# replication between the primary and the standby is a connection from one
+# wine-db pod to another on the same port, not something the operator proxies.
+# The operator itself (in cnpg-system) manages instances through the instance
+# manager's sidecar API, not a psql connection, so it needs no entry here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wine-db
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: wine-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: wine-db
+        - podSelector:
+            matchLabels:
+              app: wine-app
+        - podSelector:
+            matchLabels:
+              app: metabase
+      ports:
+        - protocol: TCP
+          port: 5432
