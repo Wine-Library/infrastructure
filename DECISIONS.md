@@ -413,8 +413,10 @@ nothing consumed what they collected. Retention is 24 months against three days
 on a disk we would own, and it survived the cluster being recreated on
 2026-08-16, which a PVC would not have.
 
-What we give up is Alertmanager, replaced by the `Rules` CRD writing back into
-Cloud Monitoring, and independence from Google — the same argument that chose
+What we give up is running our own Alertmanager - GMP starts a managed one in
+`gmp-system` by itself, together with a rule-evaluator, as soon as the first
+`ClusterRules` object exists, and alerts are routed through Cloud Monitoring
+policies rather than a receiver we configure - and independence from Google — the same argument that chose
 CloudNativePG points the other way here, and loses to the node price.
 
 The bill is now a function of cardinality, which is why the scrape interval is
@@ -525,3 +527,23 @@ The scheduled workflows depended on this without it being obvious. GitHub runs
 `Sync staging image` was always running from `main` regardless of which branch
 the deploy tracked — and `Sync dev image`'s cron on a non-default branch would
 never have fired at all.
+
+## OIDC permissions are granted per calling job, not by the repository default
+
+Recorded 19 August 2026.
+
+Both deploy workflows authenticate to GCP through Workload Identity Federation
+rather than a service account key, which means the job needs an OIDC token and
+so must hold `id-token: write`. `deploy.yml` and `sync-image.yml` declare it. The
+declaration was not enough: a called workflow can never hold more permission than
+its caller, and the repository default for `GITHUB_TOKEN` is read-only, so
+`deploy-staging.yml` and `sync-staging-image.yml` were handing down
+`id-token: none`. Every run failed at startup, before a single job was created —
+which is why nothing appeared in the logs and the failure went unnoticed.
+
+The fix could have been the repository setting: flipping the default workflow
+permissions to read-write makes the error disappear everywhere at once. That
+grants every future workflow in this repository a writable token by default,
+including anything added later that has no business holding one. Repeating four
+lines in the two calling jobs keeps the default read-only and puts the grant
+where it can be read next to the thing that needs it.
