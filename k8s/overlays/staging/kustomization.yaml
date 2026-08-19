@@ -9,6 +9,7 @@ resources:
 components:
   - ../../components/metabase
   - ../../components/frontend
+  - ../../components/image-sync
 
 labels:
   - pairs:
