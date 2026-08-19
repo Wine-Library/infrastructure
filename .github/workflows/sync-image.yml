@@ -9,9 +9,14 @@ on:
       image_tag:
         required: true
         type: string
-
-env:
-  IMAGE_REPO: wine-library/backend
+      image_repo:
+        description: 'ghcr.io repository to watch, e.g. wine-library/backend.'
+        required: true
+        type: string
+      deployment:
+        description: 'Deployment to restart. Also the value of its `app` label.'
+        required: true
+        type: string
 
 jobs:
   sync:
@@ -28,12 +33,18 @@ jobs:
       - uses: google-github-actions/get-gke-credentials@v3
         with:
           cluster_name: wine-library
+          # The cluster is zonal, so this is a zone and not the region - see the
+          # `zone` variable in terraform/variables.tf for why. Passing the region
+          # here fails the lookup outright: `not found: .../locations/
+          # europe-central2/clusters/wine-library`.
           location: europe-central2-a
 
       - id: check
         env:
           IMAGE_TAG: ${{ inputs.image_tag }}
+          IMAGE_REPO: ${{ inputs.image_repo }}
           NAMESPACE: ${{ inputs.namespace }}
+          DEPLOYMENT: ${{ inputs.deployment }}
         run: |
           set -euo pipefail
 
@@ -45,9 +56,10 @@ jobs:
             "https://ghcr.io/v2/${IMAGE_REPO}/manifests/${IMAGE_TAG}" \
             | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:"{print $2}')
 
-          running=$(kubectl get pods -n "$NAMESPACE" -l app=wine-app \
+          running=$(kubectl get pods -n "$NAMESPACE" -l "app=${DEPLOYMENT}" \
             -o jsonpath='{.items[0].status.containerStatuses[0].imageID}' | sed 's/.*@//')
 
+          echo "image:    ${IMAGE_REPO}:${IMAGE_TAG}"
           echo "registry: ${registry:-<empty>}"
           echo "running:  ${running:-<empty>}"
 
@@ -65,7 +77,7 @@ jobs:
           fi
 
       - if: steps.check.outputs.changed == 'true'
-        run: kubectl rollout restart deployment/wine-app -n ${{ inputs.namespace }}
+        run: kubectl rollout restart deployment/${{ inputs.deployment }} -n ${{ inputs.namespace }}
 
       - if: steps.check.outputs.changed == 'true'
-        run: kubectl rollout status deployment/wine-app -n ${{ inputs.namespace }} --timeout=300s
+        run: kubectl rollout status deployment/${{ inputs.deployment }} -n ${{ inputs.namespace }} --timeout=300s
