@@ -474,10 +474,12 @@ the backend's own integration checks run there — which left `dev` a third
 Postgres instance, a third application pod and a third frontend pod serving
 nobody.
 
-That is not free. Autopilot bills the reservation, not the usage, and the node
-pool floor of 2 was sized against `dev` plus staging. Removing `dev` gives back
-its CPU and memory reservation and its 5Gi volume, which matters against a fixed
-trial credit rather than an open budget.
+That is not free. This cluster is Standard, not Autopilot — billing follows the
+nodes in `primary-2`, not the pod requests — so what `dev` actually cost was
+scheduling pressure: its requests were part of what sized the pool's floor at 2
+and what pushed it toward the ceiling of 3. Removing it gives that headroom back,
+along with a 5Gi volume, which is billed directly. Against a fixed trial credit
+rather than an open budget, both matter.
 
 The namespace was deleted outright rather than scaled to zero. A scaled-to-zero
 environment still holds its PersistentVolumeClaim, still shows up in every
@@ -591,13 +593,51 @@ Deployment are now inputs, and `Sync staging image` calls the workflow twice
 through a matrix, once per service. `fail-fast` is off so a registry hiccup on
 one does not strand the other.
 
-The cron reads `*/5` and does not mean it. Observed spacing on this repository is
-25 to 50 minutes; GitHub schedules are best effort and are throttled first on
-public repositories under load. Nothing here should depend on the interval. The
-watcher exists so that an image pushed from another repository eventually lands
-without anyone touching this one — `Deploy staging` is what makes a change land
-now, and it runs on push to `main` under `k8s/**`.
+The watcher exists so that an image pushed from another repository eventually
+lands without anyone touching this one. `Deploy staging` is what makes a change
+land *now*, and it runs on push to `main` under `k8s/**`. The schedule itself no
+longer lives in GitHub Actions — see the next section for the measurements that
+moved it.
 
 Comparing digests rather than tags is the point. Both services deploy the moving
 `staging` tag, so the tag in the manifest never changes and Kubernetes sees no
 reason to do anything; the digest behind it is the only thing that moves.
+
+## The image watcher's schedule moves into the cluster
+
+Recorded 19 August 2026.
+
+`Sync staging image` asked GitHub for `*/5`. Measured across the 62 hours of
+history the API still held, it got 97 runs where the expression asks for 744 —
+13%. The gap between consecutive runs averaged 39 minutes, with a minimum of 17
+and a maximum of 105.
+
+The shape matters more than the average. GitHub does not queue a missed tick and
+run it late; it drops it. So the schedule does not degrade into "a bit slower
+under load", it degrades into an arbitrary interval with no upper bound, and
+nothing in the repository says so. Two further properties are worth writing down
+because neither is visible from the workflow file: schedules are throttled first
+on public repositories, which this one is; and GitHub disables scheduled
+workflows outright after 60 days without a commit, silently. A project that goes
+quiet over a break comes back to a watcher that no longer runs and no failure
+anywhere to show it.
+
+None of this is fixable from the workflow file, because the schedule is not ours.
+The check itself needs nothing from GitHub — a digest from ghcr.io, the digest
+running in the cluster, and a rollout restart when they differ, all of which are
+reachable from inside the cluster. So it runs there instead, as a CronJob in
+`k8s/components/image-sync/` on `*/2`, with an identity that can patch exactly
+the two Deployments that carry a moving tag and nothing else.
+
+`Sync staging image` stays, without its `schedule`. It is the manual button now:
+a way to force a check immediately through the same code path, which is also what
+makes the path testable without waiting for a tick.
+
+The component is opt-in per overlay rather than part of `base/`. Prod pins a
+release tag, so there is no moving digest to watch and a watcher there would be
+an unattended thing that restarts production on a registry push.
+
+The one cost is the image. The check needs a shell, `curl`, `jq` and `kubectl` in
+one container, and `registry.k8s.io/kubectl` is distroless with no shell, so this
+is the only third-party image the cluster runs. It is pinned to a version rather
+than tracking `latest`.

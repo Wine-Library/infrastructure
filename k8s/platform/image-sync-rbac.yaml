@@ -1,0 +1,53 @@
+# The identity the in-cluster image watcher runs as. The CronJob itself lives in
+# k8s/components/image-sync/ and is applied by the deploy pipeline; this
+# ServiceAccount, Role and RoleBinding are not, for the reason spelled out in
+# deployer-rbac.yaml: nothing the pipeline applies may hand out permissions.
+#
+# `patch` on the two Deployments is what a rollout restart actually is - it
+# writes a `kubectl.kubernetes.io/restartedAt` annotation into the pod template.
+# `resourceNames` pins it to the two workloads that deploy a moving tag; the
+# database Cluster and Metabase are deliberately out of reach.
+#
+# Applied by an administrator, once per namespace that runs the watcher.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: image-sync
+  namespace: staging
+  labels:
+    app: image-sync
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: image-sync
+  namespace: staging
+  labels:
+    app: image-sync
+rules:
+  # Reading the digest actually running needs the pod list; `resourceNames`
+  # cannot restrict `list`, so this is namespace-wide and read-only.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["wine-app", "wine-frontend"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: image-sync
+  namespace: staging
+  labels:
+    app: image-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: image-sync
+subjects:
+  - kind: ServiceAccount
+    name: image-sync
+    namespace: staging
