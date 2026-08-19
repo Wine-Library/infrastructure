@@ -21,6 +21,18 @@ spec:
   storage:
     size: 5Gi
 
+  # botocore >=1.36 defaults PutObject to a checksum-trailer transfer
+  # encoding GCS's S3-compatible XML API rejects outright, returning
+  # SignatureDoesNotMatch/Invalid argument on every WAL archive and backup
+  # attempt. Forcing "when_required" drops back to the plain signing GCS
+  # actually supports. AWS S3 itself is unaffected either way. See
+  # RECOVERY.md for how this surfaced during the restore drill.
+  env:
+    - name: AWS_REQUEST_CHECKSUM_CALCULATION
+      value: "when_required"
+    - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+      value: "when_required"
+
   postgresql:
     parameters:
       max_connections: "100"
