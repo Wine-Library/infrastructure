@@ -215,10 +215,19 @@ A `403` here means the two halves of the Workload Identity binding do not agree:
 the annotation on the `frontend` service account and
 `google_service_account_iam_member.grafana_datasource_workload_identity`.
 
-**Alert delivery is not configured by any of this.** The rules evaluate inside
-Managed Prometheus and write to `prometheus.googleapis.com/ALERTS`; turning that
-into a message to a person is an alerting policy plus a notification channel in
-Cloud Monitoring, created per rule in the console.
+**Alert delivery.** The rules evaluate inside Managed Prometheus and write to
+`prometheus.googleapis.com/ALERTS`; `terraform/monitoring_alerts.tf` turns that
+into an actual email via one notification channel and one alert policy
+covering every rule (grouped by `alertname`/`severity` so they still show as
+separate incidents). Set `alert_notification_email` in `terraform.tfvars`
+before applying — there's no default:
+
+```bash
+terraform -chdir=terraform apply
+```
+
+The same notification channel also carries the security-audit alerts from
+`terraform/audit.tf` — see [SECURITY_AUDIT.md](../../SECURITY_AUDIT.md).
 
 ## When a pod stays Pending
 
